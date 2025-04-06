@@ -1,0 +1,135 @@
+name: 构建和发布
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: autotalk.exe
+            asset_name: autotalk-windows-x64.zip
+          - os: ubuntu-latest
+            artifact_name: autotalk
+            asset_name: autotalk-linux-x64.tar.gz
+          - os: macos-latest
+            artifact_name: autotalk
+            asset_name: autotalk-macos-x64.zip
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置Rust工具链
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: 安装LLVM和其他依赖 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm clang cmake libclang-dev libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+
+      - name: 安装LLVM和其他依赖 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install llvm cmake
+
+      - name: 安装LLVM和其他依赖 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install llvm -y
+          choco install cmake -y
+
+      - name: 构建项目
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --features real_whisper
+
+      - name: 创建资源目录
+        run: |
+          mkdir -p resources/models
+
+      - name: 打包应用 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir release-package
+          cp target/release/autotalk.exe release-package/
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          cd release-package
+          7z a ../${{ matrix.asset_name }} *
+
+      - name: 打包应用 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir release-package
+          cp target/release/autotalk release-package/
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          cd release-package
+          tar -czvf ../${{ matrix.asset_name }} *
+
+      - name: 打包应用 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir release-package
+          cp target/release/autotalk release-package/
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          cd release-package
+          zip -r ../${{ matrix.asset_name }} *
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    name: 创建发布
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v3
+
+      - name: 获取版本
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: 创建发布
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          name: AutoTalk ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            autotalk-windows-x64.zip/autotalk-windows-x64.zip
+            autotalk-linux-x64.tar.gz/autotalk-linux-x64.tar.gz
+            autotalk-macos-x64.zip/autotalk-macos-x64.zip 

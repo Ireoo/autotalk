@@ -1,0 +1,73 @@
+name: 持续集成
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: 测试 ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置Rust工具链
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: 安装LLVM和其他依赖 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm clang cmake libclang-dev libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+
+      - name: 安装LLVM和其他依赖 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install llvm cmake
+
+      - name: 安装LLVM和其他依赖 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install llvm -y
+          choco install cmake -y
+
+      - name: 检查代码格式
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: 代码静态分析
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
+
+      - name: 运行测试
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+      - name: 构建检查 (基础功能)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: 构建检查 (全功能)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --features real_whisper 
