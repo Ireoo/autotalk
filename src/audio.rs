@@ -296,6 +296,21 @@ impl AudioCapture {
                     None,
                 )
             },
+            SampleFormat::U8 => {
+                info!("使用U8采样格式");
+                device.build_input_stream(
+                    &config.into(),
+                    move |data: &[u8], _: &_| {
+                        let float_data: Vec<f32> = data
+                            .iter()
+                            .map(|&s| ((s as f32) / 128.0) - 1.0)
+                            .collect();
+                        Self::process_audio_data(&float_data, Arc::clone(&buffer), &sender, channels);
+                    },
+                    err_fn,
+                    None,
+                )
+            },
             fmt => {
                 let err = format!("不支持的采样格式: {:?}，请尝试其他麦克风设备", fmt);
                 error!("{}", err);
