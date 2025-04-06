@@ -8,7 +8,28 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use tokio::io::AsyncWriteExt;
 
-// 模型和字体的下载信息
+// 下载状态，用于通知UI
+#[derive(Clone)]
+pub enum DownloadStatus {
+    Pending(String),
+    Downloading(String, f32),
+    Completed(String, PathBuf),
+    Skipped(String),
+    Progress(String, f32),
+    Complete(String),
+    Failed(String, String),
+}
+
+// 模型资源
+pub struct ModelResource {
+    pub name: String,
+    pub url: String,
+    pub file_name: String,
+    pub file_size: Option<u64>,
+    pub description: String,
+}
+
+// 下载资源
 #[derive(Clone)]
 pub struct DownloadResource {
     pub name: String,
@@ -16,16 +37,6 @@ pub struct DownloadResource {
     pub target_path: PathBuf,
     pub file_size: Option<u64>,
     pub required: bool,
-}
-
-// 下载状态
-#[derive(Debug, Clone)]
-pub enum DownloadStatus {
-    Pending(String),                // 待下载
-    Downloading(String, f32),       // 下载中，带进度
-    Completed(String, PathBuf),     // 下载完成
-    Failed(String, String),         // 下载失败，带错误信息
-    Skipped(String),                // 跳过下载（文件已存在）
 }
 
 // 下载管理器
@@ -58,7 +69,7 @@ impl Downloader {
     // 下载单个文件
     pub async fn download_file(
         &self,
-        resource: DownloadResource,
+        resource: &DownloadResource,
         status_tx: mpsc::Sender<DownloadStatus>,
     ) -> Result<PathBuf> {
         let file_name = resource.name.clone();
@@ -181,8 +192,6 @@ impl Downloader {
 pub fn get_default_resources() -> Vec<DownloadResource> {
     let mut resources = Vec::new();
     
-    // 注释掉Whisper模型下载，因为我们使用模拟实现
-    /*
     // Whisper模型 - 提供多种大小供选择
     resources.push(DownloadResource {
         name: "ggml-small.bin".to_string(),
@@ -207,7 +216,15 @@ pub fn get_default_resources() -> Vec<DownloadResource> {
         file_size: Some(75_855_224), // ~75MB
         required: false,
     });
-    */
+    
+    // 添加中文模型
+    resources.push(DownloadResource {
+        name: "ggml-medium-zh.bin".to_string(),
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin".to_string(),
+        target_path: PathBuf::from("models/ggml-medium-zh.bin"),
+        file_size: Some(1_500_000_000), // ~1.5GB
+        required: false,
+    });
     
     // 添加一个简单的示例模型文件
     resources.push(DownloadResource {
@@ -236,6 +253,7 @@ pub fn get_resource_display_name(name: &str) -> String {
         "ggml-small.bin" => "Whisper 小型模型 (较准确, 较慢)".to_string(),
         "ggml-base.bin" => "Whisper 中型模型 (平衡)".to_string(),
         "ggml-tiny.bin" => "Whisper 微型模型 (快速, 较不准确)".to_string(),
+        "ggml-medium-zh.bin" => "Whisper 中文优化模型 (最准确)".to_string(),
         "demo-model.bin" => "演示模型 (仅用于测试)".to_string(),
         "NotoSansSC-Regular.ttf" => "中文字体".to_string(),
         _ => name.to_string(),

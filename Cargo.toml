@@ -5,32 +5,43 @@ edition = "2021"
 authors = ["Author"]
 description = "高性能的桌面端实时语音转文字程序"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 # 音频处理
 cpal = "0.15.2"
 hound = "3.5.1"
 rubato = "0.14.1"
 
+# 语音识别
+# 真实环境 (需要LLVM、Clang和CMake)
+whisper-rs = { version = "0.14.0", optional = true }
+
+# 模拟环境 (无需额外环境)
+egui_extras = { version = "0.24", features = ["all_loaders"] }
+
 # GUI框架
 egui = "0.23.0"
 eframe = "0.23.0"
+image = { version = "0.24", features = ["jpeg", "png"] }
+rfd = "0.12"
+
+# 日志
+log = "0.4"
+env_logger = "0.10"
 
 # 异步运行时
 tokio = { version = "1.32.0", features = ["full"] }
 
 # 错误处理
-anyhow = "1.0.75"
+anyhow = "1.0"
 thiserror = "1.0.48"
 
-# 日志
-log = "0.4.20"
-env_logger = "0.10.0"
-
 # 命令行参数解析
-clap = { version = "4.4.2", features = ["derive"] }
+clap = { version = "4.4", features = ["derive"] }
 
 # 下载器
-reqwest = { version = "0.11.22", features = ["json", "stream"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
 futures-util = "0.3.28"
 indicatif = "0.17.7"
 directories = "5.0.1"
@@ -47,4 +58,8 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
-strip = true 
+strip = true
+
+[features]
+default = []
+real_whisper = ["whisper-rs"] 

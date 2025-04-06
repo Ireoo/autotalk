@@ -1,0 +1,21 @@
+[build]
+rustflags = ["-C", "link-args=-mconsole"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# 设置环境变量
+[env]
+# 调试信息
+RUST_BACKTRACE = "1"
+
+# 设置UTF-8编码
+RUSTFLAGS = "--codegen=codegen-units=1"
+CARGO_ENCODED_RUSTFLAGS = "1"
+
+# 设置CMake参数
+CMAKE_C_FLAGS = "-utf8 -D_UNICODE -DUNICODE"
+CMAKE_CXX_FLAGS = "-utf8 -D_UNICODE -DUNICODE" 

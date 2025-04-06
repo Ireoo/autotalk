@@ -1,106 +1,73 @@
-# AutoTalk - 高性能桌面端实时语音转文字程序
+# AutoTalk - 桌面端实时语音转文字程序
 
-AutoTalk是一个跨平台的桌面应用程序，可以实时将语音转换为文字。它使用本地Whisper模型进行语音识别，无需联网即可工作。
+AutoTalk是一个高性能的桌面语音识别应用，可以将您的语音实时转换为文字。支持多种语言，专为中文优化。
 
-## 功能特点
+## 主要功能
 
-- 使用Rust语言开发，性能高效
-- 实时录音和转写
-- 本地模型处理，保护隐私
-- 跨平台支持(Windows, macOS, Linux)
-- 可自定义设置输入设备和模型
-- 首次运行自动下载所需资源
+- 实时语音转文字
+- 支持多种Whisper模型
+- 可在不同精确度与性能间切换
+- 可选择不同输入设备
+- 可将转写文本复制到剪贴板
+- 支持模型在线下载
 
-## 环境需求
+## 安装使用
 
-- Rust编译器 (最低版本 1.60.0)
-- Cargo包管理器
-- 可用的麦克风设备
-- 网络连接(首次运行需要下载模型和字体)
+### 下载预编译版本
 
-## 安装步骤
+可以直接[下载预编译版本](https://github.com/your-username/autotalk/releases)，解压后直接运行即可。
 
-1. 克隆本仓库
+### 从源码编译
+
+#### 基础编译（无需额外依赖）
+
+如果您只是想体验基本功能，可以直接使用模拟模式编译：
+
 ```bash
-git clone https://github.com/yourusername/autotalk.git
-cd autotalk
-```
-
-2. 编译运行
-```bash
-# 编译
 cargo build --release
-
-# 运行
-cargo run --release
 ```
 
-也可以直接启动编译好的二进制文件：
+#### 完整功能编译（需要额外依赖）
+
+如需使用真实语音识别功能，需要安装以下依赖：
+
+- LLVM
+- Clang
+- CMake
+
+然后使用以下命令编译：
+
 ```bash
-./target/release/autotalk
+cargo build --release --features real_whisper
 ```
-
-### 资源下载
-
-首次运行时，程序会自动检测并下载必要的资源：
-- Whisper语音识别模型(可选择不同大小的模型)
-- 中文字体支持
-
-如果你有网络连接问题，也可以手动下载这些资源：
-
-#### 手动下载Whisper模型
-从[OpenAI Whisper](https://github.com/openai/whisper)或[whisper.cpp](https://github.com/ggerganov/whisper.cpp)下载模型，推荐使用ggml格式模型。
-
-推荐的模型：
-- ggml-tiny.bin (最小，速度快但准确度低)
-- ggml-base.bin (中等，平衡速度和准确度)
-- ggml-small.bin (较大，准确度好但速度较慢)
-
-将下载的模型文件放在项目根目录下的`models`文件夹中。
-
-#### 手动下载中文字体
-下载[Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC)字体，将Regular字体文件重命名为`NotoSansSC-Regular.ttf`并放置在`assets`目录下。
 
 ## 使用方法
 
-1. 启动程序
-2. 首次运行时，选择要使用的模型并下载必要资源
-3. 点击"开始录音"按钮开始捕获和转写
-4. 程序会实时显示转写的文字结果
-5. 点击"停止录音"停止捕获
-6. 可以使用"复制"按钮将文字复制到剪贴板
-7. 使用"清空"按钮清除当前文字
+1. 运行程序后，点击"选择设备"选择您的麦克风设备
+2. 如果是首次使用，点击"模型"下载语音模型
+3. 点击"开始录音"按钮，开始语音识别
+4. 识别结果会实时显示在文本区域
+5. 可点击复制按钮将文本复制到剪贴板
 
-## 命令行参数
+## 可用模型
 
-程序支持以下命令行参数：
-
-```
-autotalk [OPTIONS]
-
-OPTIONS:
-    -m, --model-path <MODEL_PATH>    Whisper模型路径 [默认: models/ggml-small.bin]
-    -d, --device <DEVICE>            录音设备名称，不指定则使用默认设备
-    -s, --skip-download              跳过检查和下载资源
-    -h, --help                       显示帮助信息
-    -V, --version                    显示版本信息
-```
+- `ggml-tiny.bin`: 最小模型，约75MB，速度最快但精度较低
+- `ggml-base.bin`: 基础模型，约142MB，速度和精度平衡
+- `ggml-small.bin`: 小型模型，约466MB，更高精度
+- `ggml-medium-zh.bin`: 中文优化模型，约1.5GB，最高中文识别精度
 
 ## 故障排除
 
-- 如果无法找到默认音频设备，请在设置中手动选择设备
-- 如果模型加载失败，请检查模型路径和格式是否正确
-- 如果编译失败，请确保Rust工具链是最新的
-- 如果下载资源失败，请检查网络连接或手动下载所需资源
+如果遇到问题，请检查：
 
-## 开发说明
+1. 麦克风设备是否正常工作
+2. 是否已下载语音模型
+3. 如果是从源码编译的完整版本，检查LLVM、Clang和CMake是否正确安装
 
-项目采用模块化设计：
-- audio.rs - 负责音频捕获和处理
-- transcriber.rs - 负责语音转文字处理
-- ui.rs - 负责用户界面
-- downloader.rs - 负责下载模型和字体资源
+## 免责声明
 
-## 许可证
+语音识别功能基于Whisper模型，准确率可能因环境、口音等因素而异。本软件不应用于任何关键任务场景。
+
+## 许可
 
 [MIT License](LICENSE) 

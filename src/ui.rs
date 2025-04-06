@@ -2,7 +2,7 @@ use crate::audio::AudioCapture;
 use crate::downloader::{get_default_resources, get_resource_display_name, DownloadResource, DownloadStatus, Downloader};
 use crate::transcriber::Transcriber;
 use anyhow::{Context, Result};
-use eframe::{App, CreationContext, Frame, NativeOptions};
+use eframe::{App, CreationContext, Frame};
 use egui::{
     Align, Button, Color32, Context as EguiContext, FontData, FontDefinitions, FontFamily, Layout,
     ProgressBar, RichText, ScrollArea, TextEdit, Ui, Vec2,
@@ -27,6 +27,7 @@ pub struct AutoTalkApp {
     recording: bool,
     last_update: Instant,
     settings_open: bool,
+    models_window_open: bool,  // 新增：模型管理窗口开关
     available_devices: Vec<String>,
     selected_device_idx: Option<usize>,
     copy_status: String,
@@ -80,6 +81,7 @@ impl AutoTalkApp {
             recording: false,
             last_update: Instant::now(),
             settings_open: false,
+            models_window_open: false,  // 初始化为关闭状态
             available_devices: Vec::new(),
             selected_device_idx: None,
             copy_status: String::new(),
@@ -350,7 +352,7 @@ impl AutoTalkApp {
                     .send(DownloadStatus::Pending(resource_name.clone()))
                     .ok();
                 
-                match downloader.download_file(resource, status_tx_clone.clone()).await {
+                match downloader.download_file(&resource, status_tx_clone.clone()).await {
                     Ok(_) => {
                         // 下载成功由download_file函数发送状态
                     }
@@ -415,6 +417,8 @@ impl AutoTalkApp {
                             DownloadStatus::Completed(name, _) => name.clone(),
                             DownloadStatus::Failed(name, _) => name.clone(),
                             DownloadStatus::Skipped(name) => name.clone(),
+                            DownloadStatus::Progress(name, _) => name.clone(),
+                            DownloadStatus::Complete(name) => name.clone(),
                         };
                         
                         if name != "__all__" {
@@ -523,38 +527,271 @@ impl AutoTalkApp {
     
     // 显示单个资源的下载状态
     fn show_resource_status(&self, ui: &mut Ui, resource_name: &str) {
-        let display_name = get_resource_display_name(resource_name);
+        let _display_name = get_resource_display_name(resource_name);
         
         match self.download_statuses.get(resource_name) {
             Some(DownloadStatus::Pending(_)) => {
-                ui.label(format!("{}: 等待下载...", display_name));
-                ui.add(ProgressBar::new(0.0).animate(true));
-            }
+                ui.add(ProgressBar::new(0.0).animate(true).show_percentage());
+                ui.label("等待下载...");
+            },
             Some(DownloadStatus::Downloading(_, progress)) => {
-                ui.label(format!("{}: 下载中", display_name));
-                ui.add(ProgressBar::new(*progress).show_percentage());
-            }
+                ui.add(ProgressBar::new(*progress).animate(true).show_percentage());
+                ui.label(format!("下载中... {:.1}%", progress * 100.0));
+            },
             Some(DownloadStatus::Completed(_, _)) => {
-                ui.label(RichText::new(format!("{}: 下载完成", display_name)).color(Color32::GREEN));
-            }
+                ui.add(ProgressBar::new(1.0).fill(Color32::from_rgb(0, 180, 0)));
+                ui.label("已下载");
+            },
+            Some(DownloadStatus::Progress(_, progress)) => {
+                ui.add(ProgressBar::new(*progress).animate(true).show_percentage());
+                ui.label(format!("下载中... {:.1}%", progress * 100.0));
+            },
+            Some(DownloadStatus::Complete(_)) => {
+                ui.add(ProgressBar::new(1.0).fill(Color32::from_rgb(0, 180, 0)));
+                ui.label("已下载");
+            },
             Some(DownloadStatus::Failed(_, error)) => {
-                ui.label(RichText::new(format!("{}: 下载失败", display_name)).color(Color32::RED));
-                ui.label(RichText::new(error).color(Color32::RED));
-            }
+                ui.add(ProgressBar::new(0.0).fill(Color32::from_rgb(180, 0, 0)));
+                ui.label(RichText::new(format!("下载失败: {}", error)).color(Color32::from_rgb(180, 0, 0)));
+            },
             Some(DownloadStatus::Skipped(_)) => {
-                ui.label(RichText::new(format!("{}: 已存在，已跳过", display_name)).color(Color32::YELLOW));
-            }
+                ui.add(ProgressBar::new(1.0).fill(Color32::from_rgb(0, 180, 0)));
+                ui.label("已跳过（文件已存在）");
+            },
             None => {
-                if self.downloading {
-                    ui.label(format!("{}: 等待中...", display_name));
-                    ui.add(ProgressBar::new(0.0).animate(true));
-                } else {
-                    ui.label(format!("{}: 待下载", display_name));
-                }
-            }
+                ui.add(ProgressBar::new(0.0));
+                ui.label("尚未开始下载");
+            },
         }
         
         ui.add_space(5.0);
+    }
+
+    // 添加模型管理窗口
+    fn show_models_window(&mut self, ctx: &EguiContext) {
+        if !self.models_window_open {
+            return;
+        }
+
+        egui::Window::new("模型管理")
+            .collapsible(false)
+            .resizable(true)
+            .min_width(500.0)
+            .show(ctx, |ui| {
+                ui.add_space(10.0);
+                ui.heading("可用的语音模型");
+                ui.add_space(5.0);
+                
+                ui.horizontal(|ui| {
+                    ui.label("当前使用模型：");
+                    let current_model_name = Path::new(&self.model_path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|name| get_resource_display_name(name))
+                        .unwrap_or_else(|| "未知模型".to_string());
+                    ui.label(RichText::new(current_model_name).strong().color(Color32::GREEN));
+                });
+                
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+                
+                // 模型说明
+                ui.collapsing("模型说明", |ui| {
+                    ui.add_space(5.0);
+                    ui.label("AutoTalk支持多种不同大小和精度的Whisper模型：");
+                    ui.add_space(5.0);
+                    
+                    let text_color = Color32::from_rgb(220, 220, 220);
+                    ui.label(RichText::new("• 微型模型(tiny)：最小、最快，但准确度较低").color(text_color));
+                    ui.label(RichText::new("• 基础模型(base)：平衡大小和准确度").color(text_color));
+                    ui.label(RichText::new("• 小型模型(small)：较好的准确度，资源占用适中").color(text_color));
+                    ui.label(RichText::new("• 中文优化模型(medium-zh)：最高的准确度，支持更复杂的中文识别").color(text_color));
+                    
+                    ui.add_space(5.0);
+                    ui.label("注意：模型越大，占用内存和CPU资源越多，但识别准确度越高。");
+                    ui.label("您可以根据设备性能和需求选择合适的模型。");
+                });
+                
+                ui.add_space(5.0);
+
+                // 创建一个模型资源的可变副本，这样闭包不会直接引用self.resources
+                let model_resources: Vec<DownloadResource> = self.resources.iter()
+                    .filter(|r| r.name.ends_with(".bin"))
+                    .cloned()
+                    .collect();
+                    
+                // 保存当前模型路径、下载状态等需要的信息
+                let current_model_path = self.model_path.clone();
+                let is_downloading = self.downloading;
+                let download_statuses = self.download_statuses.clone();
+
+                egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                    for (idx, resource) in model_resources.iter().enumerate() {
+                        ui.push_id(idx, |ui| {
+                            ui.add_space(2.0);
+                            let model_name = get_resource_display_name(&resource.name);
+                            let model_path = &resource.target_path;
+                            let model_exists = Downloader::check_file_exists(model_path);
+                            
+                            // 计算模型大小的可读表示
+                            let size_display = if let Some(size) = resource.file_size {
+                                if size > 1_000_000_000 {
+                                    format!("{:.1} GB", size as f64 / 1_000_000_000.0)
+                                } else if size > 1_000_000 {
+                                    format!("{:.1} MB", size as f64 / 1_000_000.0)
+                                } else if size > 1_000 {
+                                    format!("{:.1} KB", size as f64 / 1_000.0)
+                                } else {
+                                    format!("{} Bytes", size)
+                                }
+                            } else {
+                                "未知大小".to_string()
+                            };
+
+                            // 检查是否为当前选中的模型
+                            let is_current = current_model_path == model_path.to_string_lossy();
+                            let model_name_str = model_name.clone();
+                            
+                            ui.horizontal(|ui| {
+                                let text = if is_current {
+                                    RichText::new(format!("▶ {}", model_name)).strong().color(Color32::GREEN)
+                                } else {
+                                    RichText::new(model_name)
+                                };
+
+                                ui.label(text);
+                                ui.add_space(5.0);
+                                ui.label(RichText::new(format!("({})", size_display)).weak());
+                                
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if model_exists {
+                                        if !is_current && ui.button("使用").clicked() {
+                                            // 存储所需变更，后续应用
+                                            self.selected_model_idx = self.resources.iter()
+                                                .position(|r| r.name == resource.name)
+                                                .unwrap_or(self.selected_model_idx);
+                                            self.model_path = model_path.to_string_lossy().to_string();
+                                            
+                                            // 重置转写器，使用新模型
+                                            if self.transcriber.is_some() {
+                                                self.stop_recording();
+                                                self.transcriber = None;
+                                                let _ = self.init_transcriber();
+                                                self.status = format!("已切换到模型: {}", model_name_str);
+                                            }
+                                        }
+                                    } else {
+                                        if is_downloading && download_statuses.contains_key(&resource.name) {
+                                            match download_statuses.get(&resource.name) {
+                                                Some(DownloadStatus::Pending(_)) => {
+                                                    ui.label("等待下载...");
+                                                },
+                                                Some(DownloadStatus::Downloading(_, progress)) => {
+                                                    ui.label(format!("下载中 {:.0}%", progress * 100.0));
+                                                },
+                                                Some(DownloadStatus::Failed(_, _)) => {
+                                                    if ui.button("重试").clicked() {
+                                                        let _ = self.start_download_single_model(&resource);
+                                                    }
+                                                },
+                                                _ => {
+                                                    if ui.button("下载").clicked() {
+                                                        let _ = self.start_download_single_model(&resource);
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            if ui.button("下载").clicked() {
+                                                let _ = self.start_download_single_model(&resource);
+                                            }
+                                        }
+                                    }
+                                });
+                            });
+
+                            // 显示下载状态
+                            if !model_exists && download_statuses.contains_key(&resource.name) {
+                                match download_statuses.get(&resource.name) {
+                                    Some(DownloadStatus::Downloading(_, progress)) => {
+                                        ui.add(ProgressBar::new(*progress).show_percentage());
+                                    },
+                                    Some(DownloadStatus::Failed(_, error)) => {
+                                        ui.label(RichText::new(format!("错误: {}", error)).color(Color32::RED));
+                                    },
+                                    _ => {}
+                                }
+                            }
+                            ui.add_space(2.0);
+                            if idx < model_resources.len() - 1 {
+                                ui.separator();
+                            }
+                        });
+                    }
+                });
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                ui.horizontal(|ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.button("关闭").clicked() {
+                            self.models_window_open = false;
+                        }
+                    });
+                });
+            });
+    }
+
+    // 下载单个模型
+    fn start_download_single_model(&mut self, resource: &DownloadResource) -> Result<()> {
+        if self.downloading && !self.download_complete {
+            return Ok(());
+        }
+        
+        // 创建下载状态通道
+        let (status_tx, status_rx) = mpsc::channel();
+        self.download_status_receiver = Some(status_rx);
+        
+        // 更新状态字典，标记为等待下载
+        self.download_statuses.insert(
+            resource.name.clone(), 
+            DownloadStatus::Pending(resource.name.clone())
+        );
+        
+        // 启动下载线程
+        let resource_clone = resource.clone();
+        let status_tx_clone = status_tx.clone();
+        tokio::spawn(async move {
+            let downloader = Downloader::new();
+            
+            status_tx_clone
+                .send(DownloadStatus::Pending(resource_clone.name.clone()))
+                .ok();
+            
+            match downloader.download_file(&resource_clone, status_tx_clone.clone()).await {
+                Ok(_) => {
+                    // 下载成功由download_file函数发送状态
+                }
+                Err(e) => {
+                    error!("下载 {} 失败: {}", resource_clone.name, e);
+                    status_tx_clone
+                        .send(DownloadStatus::Failed(
+                            resource_clone.name,
+                            format!("下载失败: {}", e),
+                        ))
+                        .ok();
+                }
+            }
+            
+            // 通知下载完成
+            status_tx_clone.send(DownloadStatus::Completed("__all__".to_string(), PathBuf::new())).ok();
+        });
+        
+        self.downloading = true;
+        self.download_complete = false;
+        Ok(())
     }
 }
 
@@ -569,6 +806,9 @@ impl App for AutoTalkApp {
         // 显示下载窗口
         self.show_download_window(ctx);
         
+        // 显示模型管理窗口
+        self.show_models_window(ctx);
+        
         // 如果下载窗口打开，不显示主界面
         if self.download_window_open {
             return;
@@ -576,6 +816,13 @@ impl App for AutoTalkApp {
         
         // 更新转写内容
         self.update_transcript();
+        
+        // 在状态栏上显示当前模型名称
+        let model_name = Path::new(&self.model_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|name| get_resource_display_name(name))
+            .unwrap_or_else(|| "未知模型".to_string());
         
         // 顶部导航栏
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -605,6 +852,11 @@ impl App for AutoTalkApp {
                 }
                 
                 ui.add_space(10.0);
+                if ui.button("模型").clicked() {
+                    self.models_window_open = !self.models_window_open;
+                }
+                
+                ui.add_space(10.0);
                 if ui.button("设置").clicked() {
                     self.settings_open = !self.settings_open;
                 }
@@ -618,6 +870,9 @@ impl App for AutoTalkApp {
                     
                     ui.add_space(20.0);
                     ui.label(RichText::new(&self.status).color(status_color));
+                    
+                    ui.add_space(10.0);
+                    ui.label(RichText::new(format!("模型: {}", model_name)).monospace());
                     
                     if !self.copy_status.is_empty() {
                         ui.add_space(20.0);
@@ -750,6 +1005,19 @@ fn configure_ui(ctx: &CreationContext) {
 }
 
 pub async fn run_app(model_path: String, device_name: Option<String>, skip_download: bool) -> Result<()> {
+    // 确保目录存在
+    let models_dir = Path::new("models");
+    if !models_dir.exists() {
+        info!("创建模型目录: {}", models_dir.display());
+        fs::create_dir_all(models_dir).context("无法创建模型目录")?;
+    }
+    
+    let assets_dir = Path::new("assets");
+    if !assets_dir.exists() {
+        info!("创建资源目录: {}", assets_dir.display());
+        fs::create_dir_all(assets_dir).context("无法创建资源目录")?;
+    }
+    
     // 首先检查字体文件是否存在
     let font_path = Path::new("assets/NotoSansSC-Regular.ttf");
     if !font_path.exists() && !skip_download {
@@ -766,7 +1034,7 @@ pub async fn run_app(model_path: String, device_name: Option<String>, skip_downl
         let (status_tx, _) = mpsc::channel();
         let downloader = Downloader::new();
         
-        match downloader.download_file(font_resource, status_tx).await {
+        match downloader.download_file(&font_resource, status_tx).await {
             Ok(_) => info!("字体下载成功"),
             Err(e) => {
                 warn!("字体下载失败: {}，尝试使用备用链接", e);
@@ -781,7 +1049,7 @@ pub async fn run_app(model_path: String, device_name: Option<String>, skip_downl
                 };
                 
                 let (status_tx, _) = mpsc::channel();
-                match downloader.download_file(fallback_resource, status_tx).await {
+                match downloader.download_file(&fallback_resource, status_tx).await {
                     Ok(_) => info!("使用备用链接字体下载成功"),
                     Err(e) => warn!("字体下载均失败: {}，UI可能显示为乱码", e),
                 }
@@ -789,7 +1057,14 @@ pub async fn run_app(model_path: String, device_name: Option<String>, skip_downl
         }
     }
     
-    let options = NativeOptions {
+    // 检查指定的模型文件是否存在
+    let model_file = Path::new(&model_path);
+    if !Downloader::check_file_exists(model_file) && !skip_download {
+        info!("模型文件不存在: {}", model_path);
+        // 不自动下载，让用户选择
+    }
+    
+    let options = eframe::NativeOptions {
         initial_window_size: Some(Vec2::new(800.0, 600.0)),
         min_window_size: Some(Vec2::new(400.0, 300.0)),
         resizable: true,
