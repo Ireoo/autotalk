@@ -19,17 +19,7 @@ AutoTalk是一个高性能的桌面语音识别应用，可以将您的语音实
 
 ### 从源码编译
 
-#### 基础编译（无需额外依赖）
-
-如果您只是想体验基本功能，可以直接使用模拟模式编译：
-
-```bash
-cargo build --release
-```
-
-#### 完整功能编译（需要额外依赖）
-
-如需使用真实语音识别功能，需要安装以下依赖：
+需要安装以下依赖：
 
 - LLVM
 - Clang
@@ -38,7 +28,7 @@ cargo build --release
 然后使用以下命令编译：
 
 ```bash
-cargo build --release --features real_whisper
+cargo build --release
 ```
 
 ## 使用方法

@@ -14,11 +14,8 @@ hound = "3.5.1"
 rubato = "0.14.1"
 
 # 语音识别
-# 真实环境 (需要LLVM、Clang和CMake)
-whisper-rs = { version = "0.14.0", optional = true }
-
-# 模拟环境 (无需额外环境)
-egui_extras = { version = "0.24", features = ["all_loaders"] }
+# 使用真实环境 (需要LLVM、Clang和CMake)
+whisper-rs = "0.14.0"
 
 # GUI框架
 egui = "0.23.0"
