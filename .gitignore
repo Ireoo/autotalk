@@ -1,0 +1,19 @@
+# Rust编译目录
+/target
+
+# 模型文件，体积较大，不建议提交到仓库
+/models/*.bin
+
+# 依赖锁定文件
+Cargo.lock
+
+# 编辑器和IDE文件
+.vscode/
+.idea/
+*.sublime-*
+*.swp
+*~
+
+# OS生成的文件
+.DS_Store
+Thumbs.db 
