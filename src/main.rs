@@ -17,7 +17,7 @@ struct Args {
     /// 录音设备名称，不指定则使用默认设备
     #[arg(short, long)]
     device: Option<String>,
-    
+
     /// 跳过检查和下载资源
     #[arg(short, long)]
     skip_download: bool,
@@ -28,16 +28,16 @@ async fn main() -> Result<()> {
     // 初始化日志，设置详细级别
     std::env::set_var("RUST_LOG", "debug,cpal=trace");
     env_logger::init();
-    
+
     let args = Args::parse();
-    
+
     info!("启动AutoTalk - 实时语音转文字程序");
     info!("使用模型: {}", args.model_path);
-    
+
     match ui::run_app(args.model_path, args.device, args.skip_download).await {
         Ok(_) => info!("程序正常退出"),
         Err(e) => error!("程序异常退出: {}", e),
     }
-    
+
     Ok(())
-} 
+}

@@ -100,11 +100,7 @@ impl Downloader {
 
         // 检查是否成功
         if !response.status().is_success() {
-            let error_msg = format!(
-                "下载 {} 失败: HTTP 状态码 {}",
-                file_name,
-                response.status()
-            );
+            let error_msg = format!("下载 {} 失败: HTTP 状态码 {}", file_name, response.status());
             status_tx
                 .send(DownloadStatus::Failed(file_name, error_msg.clone()))
                 .ok();
@@ -145,13 +141,13 @@ impl Downloader {
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result.context("下载数据块失败")?;
             file.write_all(&chunk).await.context("写入文件失败")?;
-            
+
             // 更新进度
             downloaded += chunk.len() as u64;
             if let Some(pb) = &pb {
                 pb.set_position(downloaded);
             }
-            
+
             // 更新下载状态
             if total_size > 0 {
                 let progress = downloaded as f32 / total_size as f32;
@@ -191,7 +187,7 @@ impl Downloader {
 // 获取默认下载资源列表
 pub fn get_default_resources() -> Vec<DownloadResource> {
     let mut resources = Vec::new();
-    
+
     // Whisper模型 - 提供多种大小供选择
     resources.push(DownloadResource {
         name: "ggml-small.bin".to_string(),
@@ -200,7 +196,7 @@ pub fn get_default_resources() -> Vec<DownloadResource> {
         file_size: Some(466_781_312), // ~466MB
         required: true,
     });
-    
+
     resources.push(DownloadResource {
         name: "ggml-base.bin".to_string(),
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin".to_string(),
@@ -208,7 +204,7 @@ pub fn get_default_resources() -> Vec<DownloadResource> {
         file_size: Some(142_605_824), // ~142MB
         required: false,
     });
-    
+
     resources.push(DownloadResource {
         name: "ggml-tiny.bin".to_string(),
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin".to_string(),
@@ -216,16 +212,17 @@ pub fn get_default_resources() -> Vec<DownloadResource> {
         file_size: Some(75_855_224), // ~75MB
         required: false,
     });
-    
+
     // 添加中文模型
     resources.push(DownloadResource {
         name: "ggml-medium-zh.bin".to_string(),
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin".to_string(),
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+            .to_string(),
         target_path: PathBuf::from("models/ggml-medium-zh.bin"),
         file_size: Some(1_500_000_000), // ~1.5GB
         required: false,
     });
-    
+
     // 添加一个简单的示例模型文件
     resources.push(DownloadResource {
         name: "demo-model.bin".to_string(),
@@ -234,7 +231,7 @@ pub fn get_default_resources() -> Vec<DownloadResource> {
         file_size: Some(10_240), // ~10KB
         required: true,
     });
-    
+
     resources
 }
 
@@ -248,4 +245,4 @@ pub fn get_resource_display_name(name: &str) -> String {
         "demo-model.bin" => "演示模型 (仅用于测试)".to_string(),
         _ => name.to_string(),
     }
-} 
+}
