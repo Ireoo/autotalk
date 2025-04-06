@@ -101,7 +101,7 @@ impl AutoTalkApp {
     }
 
     fn init_audio_capture(&mut self) -> Result<()> {
-        info!("正在初始化音频捕获...");
+        info!("正在初始化麦克风设备...");
         
         let mut audio = match AudioCapture::new() {
             Ok(audio) => {
@@ -110,50 +110,50 @@ impl AutoTalkApp {
             },
             Err(e) => {
                 error!("创建AudioCapture实例失败: {}", e);
-                self.status = format!("初始化音频失败: {}", e);
+                self.status = format!("初始化麦克风失败: {}", e);
                 return Err(anyhow::anyhow!("创建AudioCapture实例失败: {}", e));
             }
         };
         
-        // 列出可用设备
+        // 列出可用麦克风设备
         match audio.list_devices() {
             Ok(devices) => {
                 self.available_devices = devices;
-                info!("发现 {} 个音频设备", self.available_devices.len());
+                info!("发现 {} 个麦克风设备", self.available_devices.len());
             },
             Err(e) => {
-                warn!("无法列出音频设备: {}", e);
-                self.status = format!("无法列出音频设备: {}", e);
+                warn!("无法列出麦克风设备: {}", e);
+                self.status = format!("无法列出麦克风设备: {}", e);
                 // 继续执行，因为这不是致命错误
             }
         }
         
-        // 如果指定了设备名称，查找其索引
+        // 如果指定了麦克风名称，查找其索引
         if let Some(ref device_name) = self.device_name {
-            info!("尝试使用指定设备: {}", device_name);
+            info!("尝试使用指定麦克风: {}", device_name);
             self.selected_device_idx = self.available_devices
                 .iter()
                 .position(|name| name == device_name);
             
             if self.selected_device_idx.is_none() {
-                warn!("找不到指定的设备: {}", device_name);
+                warn!("找不到指定的麦克风: {}", device_name);
             }
         }
         
-        // 选择设备
+        // 选择麦克风设备
         match audio.select_device(self.device_name.clone()) {
             Ok(_) => {
-                info!("成功选择音频设备");
+                info!("成功选择麦克风设备");
             },
             Err(e) => {
-                error!("选择音频设备失败: {}", e);
-                self.status = format!("选择音频设备失败: {}", e);
-                return Err(anyhow::anyhow!("选择音频设备失败: {}", e));
+                error!("选择麦克风设备失败: {}", e);
+                self.status = format!("选择麦克风设备失败: {}", e);
+                return Err(anyhow::anyhow!("选择麦克风设备失败: {}", e));
             }
         }
         
         self.audio_capture = Some(audio);
-        self.status = "初始化音频捕获成功".to_string();
+        self.status = "初始化麦克风设备成功".to_string();
         
         Ok(())
     }
@@ -793,6 +793,102 @@ impl AutoTalkApp {
         self.download_complete = false;
         Ok(())
     }
+
+    // 显示设置窗口
+    fn show_settings(&mut self, ctx: &EguiContext) {
+        if !self.settings_open {
+            return;
+        }
+
+        egui::Window::new("设置")
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.heading("音频设置");
+                ui.add_space(5.0);
+                
+                ui.horizontal(|ui| {
+                    ui.label("麦克风设备:");
+                    
+                    if ui.button("刷新设备列表").clicked() {
+                        if let Some(audio) = &mut self.audio_capture {
+                            match audio.list_devices() {
+                                Ok(devices) => {
+                                    self.available_devices = devices;
+                                    self.status = format!("找到 {} 个麦克风设备", self.available_devices.len());
+                                },
+                                Err(e) => {
+                                    self.status = format!("刷新麦克风设备列表失败: {}", e);
+                                }
+                            }
+                        } else {
+                            match self.init_audio_capture() {
+                                Ok(_) => self.status = "音频初始化成功".to_string(),
+                                Err(e) => self.status = format!("音频初始化失败: {}", e),
+                            }
+                        }
+                    }
+                });
+                
+                ui.horizontal(|ui| {
+                    ui.label("选择麦克风:");
+                    egui::ComboBox::from_id_source("device_selector")
+                        .width(200.0)
+                        .selected_text(
+                            match &self.selected_device_idx {
+                                Some(idx) => &self.available_devices[*idx],
+                                None => "默认设备",
+                            }
+                        )
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(self.selected_device_idx.is_none(), "默认设备").clicked() {
+                                self.selected_device_idx = None;
+                                self.device_name = None;
+                            }
+                            
+                            for (idx, name) in self.available_devices.iter().enumerate() {
+                                if ui.selectable_label(
+                                    self.selected_device_idx == Some(idx),
+                                    name
+                                ).clicked() {
+                                    self.selected_device_idx = Some(idx);
+                                    self.device_name = Some(name.clone());
+                                }
+                            }
+                        });
+                });
+                
+                ui.add_space(10.0);
+                
+                if ui.button("应用并重启").clicked() {
+                    if let Some(audio) = &mut self.audio_capture {
+                        // 应用新设备设置
+                        if self.recording {
+                            // 如果正在录音，停止
+                            audio.stop_capture();
+                            self.recording = false;
+                        }
+                        
+                        match audio.select_device(self.device_name.clone()) {
+                            Ok(_) => {
+                                self.status = "已应用新麦克风设备设置".to_string();
+                            },
+                            Err(e) => {
+                                self.status = format!("应用麦克风设备设置失败: {}", e);
+                            }
+                        }
+                    }
+                    
+                    self.settings_open = false;
+                }
+                
+                ui.add_space(5.0);
+                
+                if ui.button("取消").clicked() {
+                    self.settings_open = false;
+                }
+            });
+    }
 }
 
 impl App for AutoTalkApp {
@@ -882,62 +978,8 @@ impl App for AutoTalkApp {
             });
         });
         
-        // 设置窗口
-        if self.settings_open {
-            egui::Window::new("设置")
-                .collapsible(false)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.add_space(5.0);
-                    ui.checkbox(&mut self.auto_scroll, "自动滚动");
-                    ui.add_space(10.0);
-                    
-                    ui.label("Whisper模型路径:");
-                    ui.text_edit_singleline(&mut self.model_path);
-                    ui.add_space(10.0);
-                    
-                    ui.label("音频设备:");
-                    
-                    egui::ComboBox::from_label("")
-                        .selected_text(
-                            self.selected_device_idx
-                                .and_then(|idx| self.available_devices.get(idx))
-                                .unwrap_or(&"默认设备".to_string()),
-                        )
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.selected_device_idx, None, "默认设备");
-                            for (idx, name) in self.available_devices.iter().enumerate() {
-                                ui.selectable_value(&mut self.selected_device_idx, Some(idx), name);
-                            }
-                        });
-                    
-                    ui.add_space(10.0);
-                    if ui.button("应用并重启").clicked() {
-                        // 停止现有的录音
-                        self.stop_recording();
-                        
-                        // 更新设备名称
-                        self.device_name = self.selected_device_idx
-                            .and_then(|idx| self.available_devices.get(idx))
-                            .cloned();
-                        
-                        // 重置音频捕获和转写器
-                        self.audio_capture = None;
-                        self.transcriber = None;
-                        
-                        // 尝试重新初始化
-                        let _ = self.init_audio_capture();
-                        let _ = self.init_transcriber();
-                        
-                        self.settings_open = false;
-                    }
-                    
-                    ui.add_space(5.0);
-                    if ui.button("关闭").clicked() {
-                        self.settings_open = false;
-                    }
-                });
-        }
+        // 显示设置窗口
+        self.show_settings(ctx);
         
         // 主内容区域
         egui::CentralPanel::default().show(ctx, |ui| {
