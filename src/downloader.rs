@@ -13,14 +13,17 @@ use tokio::io::AsyncWriteExt;
 pub enum DownloadStatus {
     Pending(String),
     Downloading(String, f32),
-    Completed(String, PathBuf),
+    Completed(String, ()),
     Skipped(String),
+    #[allow(dead_code)]
     Progress(String, f32),
+    #[allow(dead_code)]
     Complete(String),
     Failed(String, String),
 }
 
 // 模型资源
+#[allow(dead_code)]
 pub struct ModelResource {
     pub name: String,
     pub url: String,
@@ -36,6 +39,7 @@ pub struct DownloadResource {
     pub url: String,
     pub target_path: PathBuf,
     pub file_size: Option<u64>,
+    #[allow(dead_code)]
     pub required: bool,
 }
 
@@ -173,10 +177,7 @@ impl Downloader {
 
         // 发送完成状态
         status_tx
-            .send(DownloadStatus::Completed(
-                file_name.clone(),
-                target_path.clone(),
-            ))
+            .send(DownloadStatus::Completed(file_name.clone(), ()))
             .ok();
 
         info!("{} 下载完成: {}", file_name, target_path.display());
@@ -186,51 +187,47 @@ impl Downloader {
 
 // 获取默认下载资源列表
 pub fn get_default_resources() -> Vec<DownloadResource> {
-    let mut resources = Vec::new();
-
-    // Whisper模型 - 提供多种大小供选择
-    resources.push(DownloadResource {
-        name: "ggml-small.bin".to_string(),
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin".to_string(),
-        target_path: PathBuf::from("models/ggml-small.bin"),
-        file_size: Some(466_781_312), // ~466MB
-        required: true,
-    });
-
-    resources.push(DownloadResource {
-        name: "ggml-base.bin".to_string(),
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin".to_string(),
-        target_path: PathBuf::from("models/ggml-base.bin"),
-        file_size: Some(142_605_824), // ~142MB
-        required: false,
-    });
-
-    resources.push(DownloadResource {
-        name: "ggml-tiny.bin".to_string(),
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin".to_string(),
-        target_path: PathBuf::from("models/ggml-tiny.bin"),
-        file_size: Some(75_855_224), // ~75MB
-        required: false,
-    });
-
-    // 添加中文模型
-    resources.push(DownloadResource {
-        name: "ggml-medium-zh.bin".to_string(),
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
-            .to_string(),
-        target_path: PathBuf::from("models/ggml-medium-zh.bin"),
-        file_size: Some(1_500_000_000), // ~1.5GB
-        required: false,
-    });
-
-    // 添加一个简单的示例模型文件
-    resources.push(DownloadResource {
-        name: "demo-model.bin".to_string(),
-        url: "https://raw.githubusercontent.com/openai/whisper/main/README.md".to_string(),
-        target_path: PathBuf::from("models/demo-model.bin"),
-        file_size: Some(10_240), // ~10KB
-        required: true,
-    });
+    let resources = vec![
+        DownloadResource {
+            name: "ggml-small.bin".to_string(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+                .to_string(),
+            target_path: PathBuf::from("models/ggml-small.bin"),
+            file_size: Some(466_781_312), // ~466MB
+            required: true,
+        },
+        DownloadResource {
+            name: "ggml-base.bin".to_string(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+                .to_string(),
+            target_path: PathBuf::from("models/ggml-base.bin"),
+            file_size: Some(142_605_824), // ~142MB
+            required: false,
+        },
+        DownloadResource {
+            name: "ggml-tiny.bin".to_string(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
+                .to_string(),
+            target_path: PathBuf::from("models/ggml-tiny.bin"),
+            file_size: Some(75_855_224), // ~75MB
+            required: false,
+        },
+        DownloadResource {
+            name: "ggml-medium-zh.bin".to_string(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+                .to_string(),
+            target_path: PathBuf::from("models/ggml-medium-zh.bin"),
+            file_size: Some(1_500_000_000), // ~1.5GB
+            required: false,
+        },
+        DownloadResource {
+            name: "demo-model.bin".to_string(),
+            url: "https://raw.githubusercontent.com/openai/whisper/main/README.md".to_string(),
+            target_path: PathBuf::from("models/demo-model.bin"),
+            file_size: Some(10_240), // ~10KB
+            required: true,
+        },
+    ];
 
     resources
 }

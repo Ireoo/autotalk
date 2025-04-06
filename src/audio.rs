@@ -18,11 +18,10 @@ pub struct AudioCapture {
 impl AudioCapture {
     pub fn new() -> Result<Self> {
         info!("初始化音频捕获系统");
-        let host = match cpal::default_host() {
-            host => {
-                info!("成功获取默认音频主机: {}", host.id().name());
-                host
-            }
+        let host = cpal::default_host();
+        let host = {
+            info!("成功获取默认音频主机: {}", host.id().name());
+            host
         };
 
         // 检查主机是否支持输入设备

@@ -4,7 +4,7 @@ use crate::downloader::{
 };
 use crate::transcriber::Transcriber;
 use anyhow::{Context, Result};
-use arboard;
+use arboard::Clipboard;
 use eframe::{App, CreationContext, Frame};
 use egui::{
     Align, Button, Color32, Context as EguiContext, FontData, FontDefinitions, FontFamily, Layout,
@@ -36,7 +36,6 @@ pub struct AutoTalkApp {
     auto_scroll: bool,
 
     // 资源下载相关
-    skip_download: bool,
     download_status_receiver: Option<Receiver<DownloadStatus>>,
     download_statuses: HashMap<String, DownloadStatus>,
     resources: Vec<DownloadResource>,
@@ -91,7 +90,6 @@ impl AutoTalkApp {
             copy_status: String::new(),
             auto_scroll: true,
 
-            skip_download,
             download_status_receiver: None,
             download_statuses: HashMap::new(),
             resources,
@@ -298,9 +296,7 @@ impl AutoTalkApp {
 
     fn copy_to_clipboard(&mut self) {
         if !self.transcript.is_empty() {
-            match arboard::Clipboard::new()
-                .and_then(|mut clipboard| clipboard.set_text(&self.transcript))
-            {
+            match Clipboard::new().and_then(|mut clipboard| clipboard.set_text(&self.transcript)) {
                 Ok(_) => {
                     self.copy_status = "已复制到剪贴板".to_string();
                 }
@@ -377,10 +373,7 @@ impl AutoTalkApp {
 
             // 通知下载完成
             status_tx_clone
-                .send(DownloadStatus::Completed(
-                    "__all__".to_string(),
-                    PathBuf::new(),
-                ))
+                .send(DownloadStatus::Completed("__all__".to_string(), ()))
                 .ok();
         });
 
@@ -609,7 +602,7 @@ impl AutoTalkApp {
                     let current_model_name = Path::new(&self.model_path)
                         .file_name()
                         .and_then(|n| n.to_str())
-                        .map(|name| get_resource_display_name(name))
+                        .map(get_resource_display_name)
                         .unwrap_or_else(|| "未知模型".to_string());
                     ui.label(
                         RichText::new(current_model_name)
@@ -728,46 +721,34 @@ impl AutoTalkApp {
                                                         format!("已切换到模型: {}", model_name_str);
                                                 }
                                             }
-                                        } else {
-                                            if is_downloading
-                                                && download_statuses.contains_key(&resource.name)
-                                            {
-                                                match download_statuses.get(&resource.name) {
-                                                    Some(DownloadStatus::Pending(_)) => {
-                                                        ui.label("等待下载...");
-                                                    }
-                                                    Some(DownloadStatus::Downloading(
-                                                        _,
-                                                        progress,
-                                                    )) => {
-                                                        ui.label(format!(
-                                                            "下载中 {:.0}%",
-                                                            progress * 100.0
-                                                        ));
-                                                    }
-                                                    Some(DownloadStatus::Failed(_, _)) => {
-                                                        if ui.button("重试").clicked() {
-                                                            let _ = self
-                                                                .start_download_single_model(
-                                                                    &resource,
-                                                                );
-                                                        }
-                                                    }
-                                                    _ => {
-                                                        if ui.button("下载").clicked() {
-                                                            let _ = self
-                                                                .start_download_single_model(
-                                                                    &resource,
-                                                                );
-                                                        }
+                                        } else if is_downloading
+                                            && download_statuses.contains_key(&resource.name)
+                                        {
+                                            match download_statuses.get(&resource.name) {
+                                                Some(DownloadStatus::Pending(_)) => {
+                                                    ui.label("等待下载...");
+                                                }
+                                                Some(DownloadStatus::Downloading(_, progress)) => {
+                                                    ui.label(format!(
+                                                        "下载中 {:.0}%",
+                                                        progress * 100.0
+                                                    ));
+                                                }
+                                                Some(DownloadStatus::Failed(_, _)) => {
+                                                    if ui.button("重试").clicked() {
+                                                        let _ = self
+                                                            .start_download_single_model(resource);
                                                     }
                                                 }
-                                            } else {
-                                                if ui.button("下载").clicked() {
-                                                    let _ =
-                                                        self.start_download_single_model(&resource);
+                                                _ => {
+                                                    if ui.button("下载").clicked() {
+                                                        let _ = self
+                                                            .start_download_single_model(resource);
+                                                    }
                                                 }
                                             }
+                                        } else if ui.button("下载").clicked() {
+                                            let _ = self.start_download_single_model(resource);
                                         }
                                     });
                                 });
@@ -855,10 +836,7 @@ impl AutoTalkApp {
 
             // 通知下载完成
             status_tx_clone
-                .send(DownloadStatus::Completed(
-                    "__all__".to_string(),
-                    PathBuf::new(),
-                ))
+                .send(DownloadStatus::Completed("__all__".to_string(), ()))
                 .ok();
         });
 
@@ -994,7 +972,7 @@ impl App for AutoTalkApp {
         let model_name = Path::new(&self.model_path)
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|name| get_resource_display_name(name))
+            .map(get_resource_display_name)
             .unwrap_or_else(|| "未知模型".to_string());
 
         // 顶部导航栏
@@ -1014,10 +992,8 @@ impl App for AutoTalkApp {
                 {
                     if self.recording {
                         self.stop_recording();
-                    } else {
-                        if let Err(e) = self.start_recording() {
-                            self.status = format!("启动失败: {}", e);
-                        }
+                    } else if let Err(e) = self.start_recording() {
+                        self.status = format!("启动失败: {}", e);
                     }
                 }
 
