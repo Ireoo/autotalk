@@ -235,15 +235,6 @@ pub fn get_default_resources() -> Vec<DownloadResource> {
         required: true,
     });
     
-    // 中文字体
-    resources.push(DownloadResource {
-        name: "NotoSansSC-Regular.ttf".to_string(),
-        url: "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf".to_string(),
-        target_path: PathBuf::from("assets/NotoSansSC-Regular.ttf"),
-        file_size: Some(8_000_000), // 预估大小
-        required: true,
-    });
-    
     resources
 }
 
@@ -255,7 +246,6 @@ pub fn get_resource_display_name(name: &str) -> String {
         "ggml-tiny.bin" => "Whisper 微型模型 (快速, 较不准确)".to_string(),
         "ggml-medium-zh.bin" => "Whisper 中文优化模型 (最准确)".to_string(),
         "demo-model.bin" => "演示模型 (仅用于测试)".to_string(),
-        "NotoSansSC-Regular.ttf" => "中文字体".to_string(),
         _ => name.to_string(),
     }
 } 
