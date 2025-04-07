@@ -27,13 +27,15 @@ rfd = "0.12"
 log = "0.4"
 env_logger = "0.10"
 
-# 异步运行�?tokio = { version = "1.32.0", features = ["full", "macros", "rt-multi-thread", "fs"] }
+# 异步运行�?
+tokio = { version = "1.32.0", features = ["full", "macros", "rt-multi-thread", "fs"] }
 
 # 错误处理
 anyhow = "1.0"
 thiserror = "1.0.48"
 
-# 命令行参数解�?clap = { version = "4.4", features = ["derive"] }
+# 命令行参数解�?
+clap = { version = "4.4", features = ["derive"] }
 
 # 下载
 reqwest = { version = "0.11", features = ["json", "stream"] }
@@ -42,10 +44,11 @@ indicatif = "0.17.7"
 directories = "5.0.1"
 bytes = "1.5.0"
 
-# 剪贴
+# 剪贴�?
 arboard = "3.2.0"
 
-# 为winapi添加缺少的特�?winapi = { version = "0.3.9", features = ["winuser", "windef", "winbase", "wingdi", "winnt", "libloaderapi"] }
+# 为winapi添加缺少的特�?
+winapi = { version = "0.3.9", features = ["winuser", "windef", "winbase", "wingdi", "winnt", "libloaderapi"] }
 
 [profile.release]
 opt-level = 3
