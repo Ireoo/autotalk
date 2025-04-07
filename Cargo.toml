@@ -1,6 +1,6 @@
 ﻿[package]
 name = "autotalk"
-version = "0.1.12"
+version = "0.1.15"
 edition = "2021"
 authors = ["Author"]
 description = "高性能的桌面端实时语音转文字程序"
@@ -44,5 +44,5 @@ codegen-units = 1
 panic = "abort"
 strip = true
 [features]
-default = []
+default = ["real_whisper"]
 real_whisper = ["whisper-rs"] 
