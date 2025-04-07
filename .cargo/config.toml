@@ -1,10 +1,11 @@
 [build]
+rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static", "-C", "link-args=-mconsole"]
+rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.i686-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static", "-C", "link-args=-mconsole"]
+rustflags = ["-C", "target-feature=+crt-static"]
 
 # 添加MSYS2 MinGW平台设置
 [target.x86_64-pc-windows-gnu]
@@ -22,6 +23,10 @@ RUST_BACKTRACE = "1"
 RUSTFLAGS = "--codegen=codegen-units=1"
 CARGO_ENCODED_RUSTFLAGS = "1"
 
-# 设置CMake参数
-CMAKE_C_FLAGS = "-utf8 -D_UNICODE -DUNICODE"
-CMAKE_CXX_FLAGS = "-utf8 -D_UNICODE -DUNICODE" 
+# 设置CMake参数 - 修复Unicode和ASCII混用问题
+CMAKE_C_FLAGS = "-DUNICODE -D_UNICODE /Zc:wchar_t"
+CMAKE_CXX_FLAGS = "-DUNICODE -D_UNICODE /Zc:wchar_t"
+
+CFLAGS = "/utf-8"
+CXXFLAGS = "/utf-8"
+CONAN_CMAKE_GENERATOR = "Visual Studio 17 2022" 
