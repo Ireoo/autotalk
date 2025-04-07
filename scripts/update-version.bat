@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: 获取当前版本号
-for /f "tokens=2 delims==" %%a in ('findstr "version = " Cargo.toml') do (
+for /f "tokens=3 delims= " %%a in ('findstr /B "version =" Cargo.toml') do (
     set "CURRENT_VERSION=%%a"
     set "CURRENT_VERSION=!CURRENT_VERSION:"=!"
 )
@@ -18,16 +18,26 @@ for /f "tokens=1-3 delims=." %%a in ("%CURRENT_VERSION%") do (
 set /a NEW_PATCH=PATCH+1
 set "NEW_VERSION=%MAJOR%.%MINOR%.%NEW_PATCH%"
 
-:: 更新Cargo.toml中的版本号，使用UTF-8编码
-powershell -Command "$content = Get-Content Cargo.toml -Encoding UTF8; $content -replace 'version = \"%CURRENT_VERSION%\"', 'version = \"%NEW_VERSION%\"' | Set-Content Cargo.toml -Encoding UTF8"
+:: 创建临时文件并更新版本号
+(for /f "delims=" %%a in (Cargo.toml) do (
+    set "line=%%a"
+    if "!line:~0,8!"=="version " (
+        echo version = "%NEW_VERSION%"
+    ) else (
+        echo %%a
+    )
+)) > temp.toml
+move /y temp.toml Cargo.toml
 
 :: 执行cargo fmt格式化代码
 cargo fmt
 
 :: 将更新后的文件添加到暂存区
-git add Cargo.toml
-git add src/
+git add Cargo.toml src/
 
 :: 输出版本更新信息
 echo 版本已更新: %CURRENT_VERSION% -^> %NEW_VERSION%
-echo 代码已格式化 
+echo 代码已格式化
+echo.
+echo 请手动执行以下命令来提交更改：
+echo git commit -m "chore: 更新版本号 %CURRENT_VERSION% -^> %NEW_VERSION%" 
