@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# 确保所有文本文件使用 UTF-8 编码
+*.rs text eol=lf encoding=utf-8
+*.toml text eol=lf encoding=utf-8
+*.md text eol=lf encoding=utf-8
+*.txt text eol=lf encoding=utf-8

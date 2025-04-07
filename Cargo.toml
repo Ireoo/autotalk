@@ -1,6 +1,6 @@
 ﻿[package]
 name = "autotalk"
-version = "0.1.7"
+version = "0.1.9"
 edition = "2021"
 authors = ["Author"]
 description = "高性能的桌面端实时语音转文字程序"
@@ -36,7 +36,7 @@ bytes = "1.5.0"
 # 剪贴板
 # ... existing code ...
 # 为winapi添加缺少的特性
-winapi = { version = "0.3.9", features = ["winuser", "windef", "winbase", "wingdi", "winin", "libloaderapi"] }
+winapi = { version = "0.3.9", features = ["winuser", "windef", "winbase", "wingdi", "wininet", "libloaderapi"] }
 [profile.release]
 opt-level = 3
 lto = true
