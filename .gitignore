@@ -1,21 +1,53 @@
-# Rust编译目录
-/target
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# 模型文件，体积较大，不建议提交到仓库
-/models/*.bin
+# 虚拟环境
+venv/
+env/
+ENV/
 
-# 依赖锁定文件
-Cargo.lock
+# 日志
+logs/
+*.log
 
-# 编辑器和IDE文件
-.vscode/
+# 模型文件 (通常很大，不适合放入版本控制)
+models/*.bin
+
+# 临时文件
+temp/
+tmp/
+.temp/
+.tmp/
+*.tmp
+*.temp
+*.wav
+*.download
+
+# IDE 相关
 .idea/
-*.sublime-*
+.vscode/
 *.swp
-*~
+*.swo
 
-# OS生成的文件
+# 系统相关
 .DS_Store
 Thumbs.db 
-cmake-installer.msi
-llvm-installer.exe
