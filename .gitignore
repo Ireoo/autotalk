@@ -17,3 +17,5 @@ Cargo.lock
 # OS生成的文件
 .DS_Store
 Thumbs.db 
+cmake-installer.msi
+llvm-installer.exe

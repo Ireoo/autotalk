@@ -76,7 +76,6 @@ impl Transcriber {
         match WhisperContext::new_with_params(&self.model_path, params) {
             Ok(ctx) => {
                 info!("模型加载成功");
-                #[cfg(feature = "real_whisper")]
                 self.ctx = Some(ctx);
                 Ok(())
             }
@@ -246,7 +245,8 @@ impl Transcriber {
         let model_name = Path::new(&self.model_path)
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("未知模型");
+            .unwrap_or("未知模型")
+            .to_string();
 
         info!("启动语音转文字处理线程 - 使用模型: {}", model_name);
 
@@ -260,6 +260,7 @@ impl Transcriber {
 
         let should_stop = Arc::clone(&self.should_stop);
         let ctx = Arc::new(std::sync::Mutex::new(self.ctx.take().unwrap()));
+        let model_name = model_name.clone();
 
         let handle = thread::spawn(move || {
             info!("转写线程就绪，等待音频数据");
@@ -297,7 +298,7 @@ impl Transcriber {
                         if buffer_duration >= 5.0 || elapsed >= 1.0 {
                             if !audio_buffer.is_empty() {
                                 // 锁定上下文进行处理
-                                let ctx_guard = match ctx.lock() {
+                                let mut ctx_guard = match ctx.lock() {
                                     Ok(guard) => guard,
                                     Err(e) => {
                                         error!("获取模型上下文锁失败: {:?}", e);
@@ -305,14 +306,29 @@ impl Transcriber {
                                     }
                                 };
 
+                                // 创建状态
+                                let mut state = match ctx_guard.create_state() {
+                                    Ok(state) => state,
+                                    Err(e) => {
+                                        error!("创建状态失败: {:?}", e);
+                                        continue;
+                                    }
+                                };
+
                                 // 处理音频数据
-                                match ctx_guard.full(params.clone(), &audio_buffer) {
+                                match state.full(params.clone(), &audio_buffer) {
                                     Ok(_) => {
                                         // 从模型中获取文本
-                                        let num_segments = ctx_guard.full_n_segments();
+                                        let num_segments = match state.full_n_segments() {
+                                            Ok(n) => n,
+                                            Err(e) => {
+                                                error!("获取段落数量失败: {:?}", e);
+                                                continue;
+                                            }
+                                        };
 
                                         for i in 0..num_segments {
-                                            if let Ok(segment) = ctx_guard.full_get_segment_text(i)
+                                            if let Ok(segment) = state.full_get_segment_text(i)
                                             {
                                                 let trimmed = segment.trim();
                                                 if !trimmed.is_empty() {

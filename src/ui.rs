@@ -191,6 +191,7 @@ impl AutoTalkApp {
             }
         }
 
+        // 确保转写器已初始化或尝试重新初始化
         if self.transcriber.is_none() {
             info!("转写器未初始化，尝试初始化");
             match self.init_transcriber() {
@@ -199,6 +200,27 @@ impl AutoTalkApp {
                     error!("初始化转写器失败: {}", e);
                     self.status = format!("无法启动转写: {}", e);
                     return Err(anyhow::anyhow!("无法启动转写: {}", e));
+                }
+            }
+        } else {
+            // 检查转写器是否正常，如果不正常则重新初始化
+            let transcriber_valid = self.transcriber.as_ref().map_or(false, |t| {
+                #[cfg(feature = "real_whisper")]
+                return t.ctx.is_some();
+                #[cfg(not(feature = "real_whisper"))]
+                return true;
+            });
+            
+            if !transcriber_valid {
+                info!("转写器状态异常，尝试重新初始化");
+                self.transcriber = None;
+                match self.init_transcriber() {
+                    Ok(_) => info!("成功重新初始化转写器"),
+                    Err(e) => {
+                        error!("重新初始化转写器失败: {}", e);
+                        self.status = format!("无法启动转写: {}", e);
+                        return Err(anyhow::anyhow!("无法启动转写: {}", e));
+                    }
                 }
             }
         }
