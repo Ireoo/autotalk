@@ -17,7 +17,7 @@ pub struct Transcriber {
     processing_thread: Option<thread::JoinHandle<()>>,
     should_stop: Arc<AtomicBool>,
     #[cfg(feature = "real_whisper")]
-    ctx: Option<WhisperContext>,
+    pub ctx: Option<WhisperContext>,
 }
 
 impl Transcriber {
