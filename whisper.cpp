@@ -1,9 +1,4 @@
-static const std::vector<std::string> non_speech_tokens = {
-    "\"", "#", "(", ")", "*", "+", "/", ":", ";", "<", "=", ">", "@", "[", "\\", "]", "^",
-    "_", "`", "{", "|", "}", "~", "[", "]", "{", "}", "<<", ">>", "<<<", ">>>", "--",
-    "---", "-(", "-[", "('", "(\"", "((", "))", "(((", ")))", "[[", "]]", "{{", "}}", "++",
-    "+++", "+", "+", "+", "+", "+", "+", "+"
-}; 
+static const std::vector<std::string> non_speech_tokens = { "*" };
 
 WHISPER_ATTRIBUTE_FORMAT(2, 3)
 static void whisper_log_internal        (ggml_log_level level, const char * format, ...);
