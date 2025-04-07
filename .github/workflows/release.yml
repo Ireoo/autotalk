@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+# 添加明确的权限设置
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     name: 构建 ${{ matrix.os }}
@@ -25,7 +30,7 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 设置Rust工具链
         uses: actions-rs/toolchain@v1
@@ -124,10 +129,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 下载所有构建产物
         uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: 准备发布文件
+        run: |
+          mkdir -p ./release-files
+          cp ./artifacts/autotalk-windows-x64.zip/autotalk-windows-x64.zip ./release-files/
+          cp ./artifacts/autotalk-linux-x64.tar.gz/autotalk-linux-x64.tar.gz ./release-files/
+          cp ./artifacts/autotalk-macos-x64.zip/autotalk-macos-x64.zip ./release-files/
+          ls -la ./release-files
 
       - name: 获取版本
         id: get_version
@@ -137,14 +152,21 @@ jobs:
       - name: 创建发布
         id: create_release
         uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ github.token }}
           tag_name: ${{ github.ref }}
           name: AutoTalk ${{ steps.get_version.outputs.VERSION }}
           draft: false
           prerelease: false
+          fail_on_unmatched_files: false
           files: |
-            autotalk-windows-x64.zip/autotalk-windows-x64.zip
-            autotalk-linux-x64.tar.gz/autotalk-linux-x64.tar.gz
-            autotalk-macos-x64.zip/autotalk-macos-x64.zip 
+            ./release-files/autotalk-windows-x64.zip
+            ./release-files/autotalk-linux-x64.tar.gz
+            ./release-files/autotalk-macos-x64.zip
+
+      - name: 输出调试信息
+        if: always()
+        run: |
+          echo "Tag: ${{ github.ref }}"
+          echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+          ls -la 
