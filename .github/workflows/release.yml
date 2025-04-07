@@ -1,9 +1,6 @@
 name: 构建和发布
 
-on:
-  push:
-    tags:
-      - 'v*'
+on: [push, workflow_dispatch]
 
 # 添加明确的权限设置
 permissions:
@@ -144,18 +141,25 @@ jobs:
           cp ./artifacts/autotalk-macos-x64.zip/autotalk-macos-x64.zip ./release-files/
           ls -la ./release-files
 
-      - name: 获取版本
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        shell: bash
+      - name: 获取当前日期
+        id: date
+        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: 获取提交哈希
+        id: commit
+        run: echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 生成版本号
+        id: version
+        run: echo "VERSION=${{ steps.date.outputs.DATE }}.${{ steps.commit.outputs.COMMIT }}" >> $GITHUB_OUTPUT
 
       - name: 创建发布
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           token: ${{ github.token }}
-          tag_name: ${{ github.ref }}
-          name: AutoTalk ${{ steps.get_version.outputs.VERSION }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: AutoTalk ${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
@@ -167,6 +171,7 @@ jobs:
       - name: 输出调试信息
         if: always()
         run: |
-          echo "Tag: ${{ github.ref }}"
-          echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+          echo "Version: ${{ steps.version.outputs.VERSION }}"
+          echo "Date: ${{ steps.date.outputs.DATE }}"
+          echo "Commit: ${{ steps.commit.outputs.COMMIT }}"
           ls -la 
