@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: 设置代码页为 UTF-8
+chcp 65001 > nul
+
 :: 获取当前版本号
 for /f "tokens=3 delims= " %%a in ('findstr /B "version =" Cargo.toml') do (
     set "CURRENT_VERSION=%%a"
@@ -27,7 +30,10 @@ set "NEW_VERSION=%MAJOR%.%MINOR%.%NEW_PATCH%"
         echo %%a
     )
 )) > temp.toml
-move /y temp.toml Cargo.toml
+
+:: 使用 PowerShell 复制文件以保持 UTF-8 编码
+powershell -Command "Get-Content -Encoding UTF8 temp.toml | Set-Content -Encoding UTF8 Cargo.toml"
+del temp.toml
 
 :: 执行cargo fmt格式化代码
 cargo fmt
