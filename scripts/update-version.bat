@@ -18,8 +18,8 @@ for /f "tokens=1-3 delims=." %%a in ("%CURRENT_VERSION%") do (
 set /a NEW_PATCH=PATCH+1
 set "NEW_VERSION=%MAJOR%.%MINOR%.%NEW_PATCH%"
 
-:: 更新Cargo.toml中的版本号
-powershell -Command "(Get-Content Cargo.toml) -replace 'version = \"%CURRENT_VERSION%\"', 'version = \"%NEW_VERSION%\"' | Set-Content Cargo.toml"
+:: 更新Cargo.toml中的版本号，使用UTF-8编码
+powershell -Command "$content = Get-Content Cargo.toml -Encoding UTF8; $content -replace 'version = \"%CURRENT_VERSION%\"', 'version = \"%NEW_VERSION%\"' | Set-Content Cargo.toml -Encoding UTF8"
 
 :: 执行cargo fmt格式化代码
 cargo fmt
