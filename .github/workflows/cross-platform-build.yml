@@ -1,0 +1,389 @@
+name: 交叉编译全平台全芯片组
+
+on: [push, workflow_dispatch]
+
+# 添加明确的权限设置
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.accelerator }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 平台
+          - os: windows-latest
+            arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            artifact_name: autotalk.exe
+            asset_name: autotalk-windows-x64.zip
+            accelerator: CPU
+            
+          - os: windows-latest
+            arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            artifact_name: autotalk-gpu.exe
+            asset_name: autotalk-windows-x64-gpu.zip
+            cuda_version: "11.8.0"
+            accelerator: NVIDIA-GPU
+            
+          - os: windows-latest
+            arch: arm64
+            rust_target: aarch64-pc-windows-msvc
+            artifact_name: autotalk.exe
+            asset_name: autotalk-windows-arm64.zip
+            accelerator: CPU
+            
+          # Linux 平台
+          - os: ubuntu-latest
+            arch: x64
+            rust_target: x86_64-unknown-linux-gnu
+            artifact_name: autotalk
+            asset_name: autotalk-linux-x64.tar.gz
+            accelerator: CPU
+            
+          - os: ubuntu-latest
+            arch: x64
+            rust_target: x86_64-unknown-linux-gnu
+            artifact_name: autotalk-gpu
+            asset_name: autotalk-linux-x64-gpu.tar.gz
+            cuda_version: "11.8.0"
+            accelerator: NVIDIA-GPU
+            
+          - os: ubuntu-latest
+            arch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            artifact_name: autotalk
+            asset_name: autotalk-linux-arm64.tar.gz
+            accelerator: CPU
+            
+          # macOS 平台
+          - os: macos-latest
+            arch: x64
+            rust_target: x86_64-apple-darwin
+            artifact_name: autotalk
+            asset_name: autotalk-macos-x64.tar.gz
+            accelerator: CPU
+            
+          - os: macos-latest
+            arch: arm64
+            rust_target: aarch64-apple-darwin
+            artifact_name: autotalk
+            asset_name: autotalk-macos-arm64.tar.gz
+            accelerator: CPU
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Rust工具链
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.rust_target }}
+          override: true
+
+      # 安装交叉编译工具链 - Linux ARM64
+      - name: 安装交叉编译工具链 (Linux ARM64)
+        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      # 安装CUDA (Windows)
+      - name: 安装CUDA (Windows)
+        if: matrix.os == 'windows-latest' && matrix.accelerator == 'NVIDIA-GPU'
+        shell: powershell
+        run: |
+          $CUDA_URL = "https://developer.download.nvidia.com/compute/cuda/${{ matrix.cuda_version }}/network_installers/cuda_${{ matrix.cuda_version }}_windows_network.exe"
+          $CUDA_EXE = "cuda_installer.exe"
+          Invoke-WebRequest -Uri $CUDA_URL -OutFile $CUDA_EXE
+          Start-Process -FilePath $CUDA_EXE -ArgumentList "-s nvcc_${{ matrix.cuda_version }} cublas_${{ matrix.cuda_version }} cudart_${{ matrix.cuda_version }} curand_${{ matrix.cuda_version }}" -Wait
+          # 设置环境变量
+          echo "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      # 安装CUDA (Linux)
+      - name: 安装CUDA (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.accelerator == 'NVIDIA-GPU'
+        run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
+          sudo dpkg -i cuda-keyring_1.0-1_all.deb
+          sudo apt-get update
+          # 只安装必要的CUDA组件
+          sudo apt-get -y --no-install-recommends install \
+            cuda-compiler-11-8 \
+            cuda-libraries-11-8 \
+            cuda-libraries-dev-11-8 \
+            cuda-cudart-11-8 \
+            cuda-cudart-dev-11-8 \
+            cuda-nvcc-11-8 \
+            libcublas-11-8 \
+            libcublas-dev-11-8
+          # 设置环境变量
+          echo "CUDA_PATH=/usr/local/cuda-11.8" >> $GITHUB_ENV
+          echo "/usr/local/cuda-11.8/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      # 安装平台特定依赖 - Linux
+      - name: 安装Linux依赖 (x64)
+        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev libclang-dev clang cmake pkg-config libssl-dev libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libasound2-dev
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include/openssl" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+
+      - name: 安装Linux依赖 (ARM64)
+        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev libclang-dev clang cmake pkg-config libssl-dev
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include/openssl" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          # 设置交叉编译环境变量
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-lgcc" >> $GITHUB_ENV
+
+      # 安装Windows依赖
+      - name: 安装Windows依赖
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install llvm -y
+          choco install cmake -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
+          echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
+          # 设置编译标志
+          echo "CFLAGS=/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t" >> $GITHUB_ENV
+          echo "CXXFLAGS=/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t" >> $GITHUB_ENV
+
+      # 安装macOS依赖
+      - name: 安装macOS依赖
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install llvm cmake pkg-config
+
+      - name: 缓存依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.accelerator }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.accelerator }}-cargo-
+
+      # 设置GPU支持配置
+      - name: 配置GPU支持
+        if: matrix.accelerator == 'NVIDIA-GPU'
+        shell: bash
+        run: |
+          echo 'GGML_CUDA=1' >> $GITHUB_ENV
+
+      # 构建项目
+      - name: 构建项目
+        uses: actions-rs/cargo@v1
+        env:
+          # 根据是否启用GPU设置环境变量
+          GGML_CUDA: ${{ matrix.accelerator == 'NVIDIA-GPU' && '1' || '0' }}
+        with:
+          command: build
+          args: --release --target ${{ matrix.rust_target }} ${{ matrix.accelerator == 'NVIDIA-GPU' && '--features real_whisper' || '' }}
+        timeout-minutes: 30
+
+      - name: 创建资源目录
+        run: |
+          mkdir -p resources/models
+
+      # Windows GPU补丁应用
+      - name: 应用Windows GPU补丁
+        if: matrix.os == 'windows-latest' && matrix.accelerator == 'NVIDIA-GPU'
+        run: |
+          # 创建修复脚本
+          @"@echo off
+          echo 正在应用修复补丁...
+          
+          REM 设置环境变量
+          set CFLAGS=/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t
+          set CXXFLAGS=/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t
+          
+          REM 清理之前的构建
+          echo 开始清理...
+          cargo clean
+          
+          REM 开始构建，但在复制源代码后暂停
+          echo 开始构建...
+          cargo build --release --target ${{ matrix.rust_target }} --features real_whisper
+          
+          echo 构建过程开始，定位ggml-cpu.cpp文件...
+          
+          REM 查找构建过程中生成的ggml-cpu.cpp文件
+          for /f "delims=" %%i in ('dir /s /b target\release\build\whisper-rs-sys*\out\whisper.cpp\ggml\src\ggml-cpu\ggml-cpu.cpp') do (
+              echo 找到文件: %%i
+              
+              REM 修改该文件
+              echo 修改文件...
+              powershell -Command "(Get-Content '%%i') -replace 'RegQueryValueExA', 'RegQueryValueExW' | Set-Content '%%i'"
+              powershell -Command "(Get-Content '%%i') -replace 'TEXT\(""ProcessorNameString""\)', 'L""ProcessorNameString""' | Set-Content '%%i'"
+              
+              echo 文件已修改，继续构建...
+              cargo build --release --target ${{ matrix.rust_target }} --features real_whisper
+              
+              goto :done
+          )
+          
+          :done
+          echo 脚本执行完成"@ | Out-File -FilePath apply-fix.bat -Encoding utf8
+          
+          # 执行修复脚本
+          .\apply-fix.bat
+
+      # 打包应用 - Windows
+      - name: 打包应用 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir release-package
+          cp target/${{ matrix.rust_target }}/release/${{ contains(matrix.artifact_name, 'gpu') && 'autotalk.exe' || matrix.artifact_name }} release-package/${{ matrix.artifact_name }}
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          
+          # 对于GPU版本，复制CUDA运行时库
+          if ("${{ matrix.accelerator }}" -eq "NVIDIA-GPU") {
+            cp "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\cudart64_118.dll" release-package/
+            cp "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\cublas64_118.dll" release-package/
+            cp "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\cublasLt64_118.dll" release-package/
+            
+            # 创建GPU使用说明
+            echo "# GPU加速版本使用说明" > release-package/GPU加速说明.txt
+            echo "本版本支持NVIDIA GPU加速，需要安装CUDA运行时环境。" >> release-package/GPU加速说明.txt
+            echo "要求：" >> release-package/GPU加速说明.txt
+            echo "1. 安装NVIDIA显卡驱动" >> release-package/GPU加速说明.txt
+            echo "2. 如果运行时找不到CUDA动态库，请安装CUDA Toolkit 11.8或更高版本" >> release-package/GPU加速说明.txt
+          }
+          
+          # 创建平台特定说明
+          echo "# 平台信息" > release-package/平台信息.txt
+          echo "操作系统: Windows" >> release-package/平台信息.txt
+          echo "架构: ${{ matrix.arch }}" >> release-package/平台信息.txt
+          echo "加速器: ${{ matrix.accelerator }}" >> release-package/平台信息.txt
+          
+          cd release-package
+          7z a ../${{ matrix.asset_name }} *
+
+      # 打包应用 - Linux
+      - name: 打包应用 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir release-package
+          cp target/${{ matrix.rust_target }}/release/${{ contains(matrix.artifact_name, 'gpu') && 'autotalk' || matrix.artifact_name }} release-package/${{ matrix.artifact_name }}
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          
+          # 对于GPU版本，创建使用说明
+          if [ "${{ matrix.accelerator }}" = "NVIDIA-GPU" ]; then
+            echo "# GPU加速版本使用说明" > release-package/GPU加速说明.txt
+            echo "本版本支持NVIDIA GPU加速，需要安装CUDA运行时环境。" >> release-package/GPU加速说明.txt
+            echo "要求：" >> release-package/GPU加速说明.txt
+            echo "1. 安装NVIDIA显卡驱动" >> release-package/GPU加速说明.txt
+            echo "2. 安装CUDA Toolkit 11.8或更高版本" >> release-package/GPU加速说明.txt
+          fi
+          
+          # 创建平台特定说明
+          echo "# 平台信息" > release-package/平台信息.txt
+          echo "操作系统: Linux" >> release-package/平台信息.txt
+          echo "架构: ${{ matrix.arch }}" >> release-package/平台信息.txt
+          echo "加速器: ${{ matrix.accelerator }}" >> release-package/平台信息.txt
+          
+          cd release-package
+          tar -czvf ../${{ matrix.asset_name }} *
+
+      # 打包应用 - macOS
+      - name: 打包应用 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir release-package
+          cp target/${{ matrix.rust_target }}/release/${{ matrix.artifact_name }} release-package/
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          
+          # 创建平台特定说明
+          echo "# 平台信息" > release-package/平台信息.txt
+          echo "操作系统: macOS" >> release-package/平台信息.txt
+          echo "架构: ${{ matrix.arch }}" >> release-package/平台信息.txt
+          echo "加速器: ${{ matrix.accelerator }}" >> release-package/平台信息.txt
+          
+          cd release-package
+          tar -czvf ../${{ matrix.asset_name }} *
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    name: 创建多平台发布
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: 准备发布文件
+        run: |
+          mkdir -p ./release-files
+          find ./artifacts -type f -name "*.zip" -o -name "*.tar.gz" | xargs -I {} cp {} ./release-files/
+          ls -la ./release-files
+
+      - name: 获取当前日期
+        id: date
+        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: 获取提交哈希
+        id: commit
+        run: echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 生成版本号
+        id: version
+        run: echo "VERSION=${{ steps.date.outputs.DATE }}.${{ steps.commit.outputs.COMMIT }}" >> $GITHUB_OUTPUT
+
+      - name: 创建发布
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ github.token }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: AutoTalk 全平台 ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: ./release-files/*
+
+      - name: 输出调试信息
+        if: always()
+        run: |
+          echo "Version: ${{ steps.version.outputs.VERSION }}"
+          echo "Date: ${{ steps.date.outputs.DATE }}"
+          echo "Commit: ${{ steps.commit.outputs.COMMIT }}"
+          ls -la ./release-files 
