@@ -211,6 +211,96 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # 预处理步骤：在源代码下载阶段就进行修改（移到构建前）
+      - name: 预处理依赖源码 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          # 创建修复脚本
+          @"
+          param(`$filePath)
+          
+          # 读取文件内容
+          `$content = Get-Content `$filePath -Raw
+          
+          # 替换RegQueryValueExA为RegQueryValueExW
+          `$newContent = `$content -replace "RegQueryValueExA\(hKey,\s*L\"ProcessorNameString\"", "RegQueryValueExW(hKey, L\"ProcessorNameString\""
+          
+          # 检查是否有变化
+          if (`$newContent -ne `$content) {
+              Write-Host "正在修复文件..."
+              Set-Content -Path `$filePath -Value `$newContent
+              Write-Host "已修复文件: `$filePath"
+              return `$true
+          }
+          
+          # 尝试完全替换Windows部分代码
+          $windowsCode = "#ifdef _WIN32`r`n" +
+              "        HKEY hKey;`r`n" +
+              "        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,`r`n" +
+              "                        TEXT(""HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0""),`r`n" +
+              "                        0,`r`n" +
+              "                        KEY_READ,`r`n" +
+              "                        &hKey) == ERROR_SUCCESS) {`r`n" +
+              "            DWORD cpu_brand_size = 0;`r`n" +
+              "            if (RegQueryValueExW(hKey,`r`n" +
+              "                                L""ProcessorNameString"",`r`n" +
+              "                                NULL,`r`n" +
+              "                                NULL,`r`n" +
+              "                                NULL,`r`n" +
+              "                                &cpu_brand_size) == ERROR_SUCCESS) {`r`n" +
+              "                std::vector<wchar_t> wbuffer(cpu_brand_size / sizeof(wchar_t));`r`n" +
+              "                if (RegQueryValueExW(hKey,`r`n" +
+              "                                    L""ProcessorNameString"",`r`n" +
+              "                                    NULL,`r`n" +
+              "                                    NULL,`r`n" +
+              "                                    (LPBYTE)wbuffer.data(),`r`n" +
+              "                                    &cpu_brand_size) == ERROR_SUCCESS) {`r`n" +
+              "                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, NULL, 0, NULL, NULL);`r`n" +
+              "                    if (size_needed > 0) {`r`n" +
+              "                        description.resize(size_needed);`r`n" +
+              "                        WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, &description[0], size_needed, NULL, NULL);`r`n" +
+              "                        if (description.find('\\0') != std::string::npos) {`r`n" +
+              "                            description.resize(description.find('\\0'));`r`n" +
+              "                        }`r`n" +
+              "                    }`r`n" +
+              "                }`r`n" +
+              "            }`r`n" +
+              "            RegCloseKey(hKey);`r`n" +
+              "        }`r`n" +
+              "#endif"
+          
+          # 使用正则表达式替换整个Windows代码块
+          `$pattern = "(?s)#ifdef _WIN32.*?RegQueryValueExA.*?RegCloseKey.*?#endif"
+          `$newContent = [regex]::Replace(`$content, `$pattern, `$windowsCode)
+          
+          if (`$newContent -ne `$content) {
+              Write-Host "正在替换整个Windows代码块..."
+              Set-Content -Path `$filePath -Value `$newContent
+              Write-Host "已完全替换Windows代码块: `$filePath"
+              return `$true
+          }
+          
+          Write-Host "无法自动修复文件: `$filePath"
+          return `$false
+          "@ | Out-File -FilePath fix-ggml-cpu.ps1 -Encoding utf8
+          
+          Write-Host "将在cargo依赖下载后应用修复"
+          
+          # 设置环境变量，告知何处可以找到修复脚本
+          echo "WHISPER_PATCH_SCRIPT=$PWD\fix-ggml-cpu.ps1" >> $env:GITHUB_ENV
+          
+          # 运行前挂钩：在Cargo.toml中使用whisper-rs-sys的补丁
+          # 创建.cargo/config.toml文件
+          New-Item -Path ".cargo" -ItemType Directory -Force
+          Set-Content -Path ".cargo\config.toml" -Value "[env]`r`nWHISPER_PATCH_SCRIPT = ""$PWD\fix-ggml-cpu.ps1""`r`n`r`n[build]`r`nrustflags = [""-C"", ""target-cpu=native""]`r`n`r`n[target.x86_64-pc-windows-msvc.whisper-rs-sys]`r`nrustc-env = { WHISPER_PATCH_SCRIPT = ""$PWD\fix-ggml-cpu.ps1"" }"
+          
+          # 添加自定义钩子
+          $hookDir = "$env:USERPROFILE\.cargo\hooks"
+          New-Item -Path $hookDir -ItemType Directory -Force
+          Set-Content -Path "$hookDir\pre-build-whisper-rs-sys.bat" -Value "@echo off`r`nsetlocal enabledelayedexpansion`r`n`r`necho 正在执行whisper-rs-sys构建钩子`r`n`r`nif ""%WHISPER_PATCH_SCRIPT%"" == """" (`r`n  echo WHISPER_PATCH_SCRIPT环境变量未设置，跳过修复`r`n  exit 0`r`n)`r`n`r`nfor /r %%f in (*ggml-cpu.cpp) do (`r`n  echo 发现文件: %%f`r`n  powershell -File ""%WHISPER_PATCH_SCRIPT%"" -filePath ""%%f""`r`n)`r`n`r`nexit 0" -Encoding ascii
+          
+          Write-Host "已设置构建钩子"
+
       - name: 构建项目
         env:
           CMAKE_C_FLAGS: ${{ env.CMAKE_C_FLAGS }}
@@ -232,15 +322,91 @@ jobs:
       - name: 应用Windows补丁并构建
         if: matrix.os == 'windows-latest'
         run: |
-          # 运行修复脚本
-          if (Test-Path env:WHISPER_RS_PRE_BUILD_SCRIPT) {
-            Write-Host "运行预构建修复脚本..."
-            $buildDir = Join-Path $PWD "target\release\build"
-            powershell -File $env:WHISPER_RS_PRE_BUILD_SCRIPT -buildDir $buildDir
-            
-            # 重新执行构建命令
-            cargo build --release --verbose
+          # 创建直接替换脚本
+          @"
+          param(`$buildDir)
+          
+          # 在目标目录中查找所有ggml-cpu.cpp文件
+          Get-ChildItem -Path `$buildDir -Filter "ggml-cpu.cpp" -Recurse | ForEach-Object {
+              Write-Host "正在处理文件: `$(`$_.FullName)"
+              
+              # 读取文件内容
+              `$content = Get-Content `$_.FullName -Raw
+              
+              # 替换RegQueryValueExA为RegQueryValueExW
+              `$newContent = `$content -replace "RegQueryValueExA\(hKey,\s*L\"ProcessorNameString\"", "RegQueryValueExW(hKey, L\"ProcessorNameString\""
+              
+              # 检查是否有变化
+              if (`$newContent -ne `$content) {
+                  Write-Host "正在修复文件..."
+                  Set-Content -Path `$_.FullName -Value `$newContent
+                  Write-Host "已修复文件: `$(`$_.FullName)"
+              } else {
+                  Write-Host "文件不需要修改或模式匹配失败"
+                  
+                  # 尝试完全替换Windows部分代码
+                  $windowsCode = "#ifdef _WIN32`r`n" +
+                      "        HKEY hKey;`r`n" +
+                      "        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,`r`n" +
+                      "                        TEXT(""HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0""),`r`n" +
+                      "                        0,`r`n" +
+                      "                        KEY_READ,`r`n" +
+                      "                        &hKey) == ERROR_SUCCESS) {`r`n" +
+                      "            DWORD cpu_brand_size = 0;`r`n" +
+                      "            if (RegQueryValueExW(hKey,`r`n" +
+                      "                                L""ProcessorNameString"",`r`n" +
+                      "                                NULL,`r`n" +
+                      "                                NULL,`r`n" +
+                      "                                NULL,`r`n" +
+                      "                                &cpu_brand_size) == ERROR_SUCCESS) {`r`n" +
+                      "                std::vector<wchar_t> wbuffer(cpu_brand_size / sizeof(wchar_t));`r`n" +
+                      "                if (RegQueryValueExW(hKey,`r`n" +
+                      "                                    L""ProcessorNameString"",`r`n" +
+                      "                                    NULL,`r`n" +
+                      "                                    NULL,`r`n" +
+                      "                                    (LPBYTE)wbuffer.data(),`r`n" +
+                      "                                    &cpu_brand_size) == ERROR_SUCCESS) {`r`n" +
+                      "                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, NULL, 0, NULL, NULL);`r`n" +
+                      "                    if (size_needed > 0) {`r`n" +
+                      "                        description.resize(size_needed);`r`n" +
+                      "                        WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, &description[0], size_needed, NULL, NULL);`r`n" +
+                      "                        if (description.find('\\0') != std::string::npos) {`r`n" +
+                      "                            description.resize(description.find('\\0'));`r`n" +
+                      "                        }`r`n" +
+                      "                    }`r`n" +
+                      "                }`r`n" +
+                      "            }`r`n" +
+                      "            RegCloseKey(hKey);`r`n" +
+                      "        }`r`n" +
+                      "#endif"
+                  
+                  # 使用正则表达式替换整个Windows代码块
+                  `$pattern = "(?s)#ifdef _WIN32.*?RegQueryValueExA.*?RegCloseKey.*?#endif"
+                  `$newContent = [regex]::Replace(`$content, `$pattern, `$windowsCode)
+                  
+                  if (`$newContent -ne `$content) {
+                      Write-Host "正在替换整个Windows代码块..."
+                      Set-Content -Path `$_.FullName -Value `$newContent
+                      Write-Host "已完全替换Windows代码块: `$(`$_.FullName)"
+                  } else {
+                      Write-Host "无法自动修复，将显示文件内容进行调试..."
+                      `$fileContent = Get-Content `$_.FullName -Raw
+                      Write-Host "`$fileContent"
+                  }
+              }
           }
+          "@ | Out-File -FilePath fix-whisper-rs.ps1 -Encoding utf8
+          
+          Write-Host "修复脚本已创建"
+          
+          # 查找构建目录
+          $buildDir = Join-Path $PWD "target\release\build"
+          
+          # 运行修复脚本
+          powershell -File fix-whisper-rs.ps1 -buildDir $buildDir
+          
+          # 重新构建
+          cargo build --release --verbose
 
       - name: 创建资源目录
         run: |
