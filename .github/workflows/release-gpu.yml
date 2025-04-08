@@ -122,13 +122,15 @@ jobs:
         uses: actions-rs/cargo@v1
         env:
           GGML_CUDA: 1
-          RUSTFLAGS: "-C target-feature=+crt-static -C target-cpu=native"
+          RUSTFLAGS: "-C target-feature=+crt-static -C target-cpu=native -C link-args=-Wl,--no-as-needed"
           # 设置CMake变量
           CMAKE_C_FLAGS: ${{ matrix.os == 'windows-latest' && '/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t' || '' }}
           CMAKE_CXX_FLAGS: ${{ matrix.os == 'windows-latest' && '/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t' || '' }}
           # 设置CMake策略
           CMAKE_POLICY_DEFAULT_CMP0126: NEW
           CMAKE_POLICY_DEFAULT_CMP0066: NEW
+          # 设置链接器标志
+          LDFLAGS: "-Wl,--no-as-needed -lasound"
         with:
           command: build
           args: --release --features real_whisper --target x86_64-unknown-linux-gnu
