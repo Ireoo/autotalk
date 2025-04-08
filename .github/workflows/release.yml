@@ -47,6 +47,8 @@ jobs:
         run: |
           brew install llvm cmake
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+          echo "CMAKE_C_FLAGS=-arch arm64" >> $GITHUB_ENV
+          echo "CMAKE_CXX_FLAGS=-arch arm64" >> $GITHUB_ENV
 
       - name: 安装LLVM和其他依赖 (Windows)
         if: matrix.os == 'windows-latest'
@@ -72,6 +74,9 @@ jobs:
         with:
           command: build
           args: --release
+          env:
+            CMAKE_C_FLAGS: ${{ env.CMAKE_C_FLAGS }}
+            CMAKE_CXX_FLAGS: ${{ env.CMAKE_CXX_FLAGS }}
         timeout-minutes: 30
 
       - name: 创建资源目录

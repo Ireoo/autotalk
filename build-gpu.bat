@@ -1,4 +1,5 @@
 @echo off
+@chcp 936 >nul
 echo ===========================================
 echo 构建GPU加速版本 - AutoTalk
 echo ===========================================
@@ -9,7 +10,23 @@ if %ERRORLEVEL% NEQ 0 (
     echo [错误] 未找到CUDA编译器(nvcc)
     echo 请安装CUDA Toolkit并确保其在系统PATH中
     echo 可从https://developer.nvidia.com/cuda-downloads下载
-    exit /b 1
+    echo.
+    echo [提示] 如果您不需要GPU加速，可以直接运行普通版本的构建脚本
+    echo 或者键入Y安装CPU版本，键入N退出: 
+    set /p INSTALL_CPU=
+    if /i "%INSTALL_CPU%"=="Y" (
+        echo 正在构建CPU版本...
+        set RUSTFLAGS=-C target-feature=+crt-static
+        cargo build --release
+        if %ERRORLEVEL% NEQ 0 (
+            echo [错误] CPU版本构建失败
+            exit /b 1
+        )
+        echo [信息] CPU版本构建成功，可执行文件位于 target\release\autotalk.exe
+        exit /b 0
+    ) else (
+        exit /b 1
+    )
 )
 
 REM 输出CUDA版本信息
