@@ -70,13 +70,13 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: 构建项目
+        env:
+          CMAKE_C_FLAGS: ${{ env.CMAKE_C_FLAGS }}
+          CMAKE_CXX_FLAGS: ${{ env.CMAKE_CXX_FLAGS }}
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
-          env:
-            CMAKE_C_FLAGS: ${{ env.CMAKE_C_FLAGS }}
-            CMAKE_CXX_FLAGS: ${{ env.CMAKE_CXX_FLAGS }}
         timeout-minutes: 30
 
       - name: 创建资源目录
