@@ -78,7 +78,7 @@ jobs:
           # 安装交叉编译工具链
           sudo apt-get install -y gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
           # 安装额外的系统库
-          sudo apt-get install -y libasound2-dev:i386 libasound2:i386
+          sudo apt-get install -y libasound2-dev libasound2
           # 设置OpenSSL环境变量
           echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
           echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
