@@ -81,10 +81,16 @@ jobs:
         run: |
           choco install llvm -y
           choco install cmake -y
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
-          echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
-          echo "CMAKE_C_FLAGS=-DUNICODE -D_UNICODE" >> $GITHUB_ENV
-          echo "CMAKE_CXX_FLAGS=-DUNICODE -D_UNICODE" >> $GITHUB_ENV
+          # 设置环境变量
+          echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\\Program Files\\LLVM\\bin\\llvm-config" >> $env:GITHUB_ENV
+          # 添加到PATH
+          echo "C:\\Program Files\\LLVM\\bin" >> $env:PATH
+          # 检查LLVM安装和库文件
+          dir "C:\\Program Files\\LLVM\\bin"
+          # 设置编译标志
+          echo "CMAKE_C_FLAGS=-DUNICODE -D_UNICODE" >> $env:GITHUB_ENV
+          echo "CMAKE_CXX_FLAGS=-DUNICODE -D_UNICODE" >> $env:GITHUB_ENV
 
       - name: 缓存依赖
         uses: actions/cache@v4
@@ -106,12 +112,12 @@ jobs:
           OPENSSL_INCLUDE_DIR: ${{ env.OPENSSL_INCLUDE_DIR }}
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
           LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
-          BINDGEN_EXTRA_CLANG_ARGS: "-I/usr/include/clang"
+          BINDGEN_EXTRA_CLANG_ARGS: ${{ matrix.os == 'ubuntu-latest' && '"-I/usr/include/clang"' || '' }}
           CFLAGS: ""  # 清空 CFLAGS 以避免继承有问题的标志
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release
+          args: --release --verbose
         timeout-minutes: 30
 
       - name: 创建资源目录
