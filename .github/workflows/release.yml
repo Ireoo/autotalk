@@ -131,17 +131,6 @@ jobs:
           
           Write-Host "已设置构建钩子"
 
-      - name: 缓存依赖
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
       # 预处理步骤：在源代码下载阶段就进行修改（移到构建前）
       - name: 预处理依赖源码 (Windows)
         if: matrix.os == 'windows-latest'
@@ -230,6 +219,17 @@ jobs:
           Set-Content -Path "$hookDir\pre-build-whisper-rs-sys.bat" -Value "@echo off`r`nsetlocal enabledelayedexpansion`r`n`r`necho 正在执行whisper-rs-sys构建钩子`r`n`r`nif ""%WHISPER_PATCH_SCRIPT%"" == """" (`r`n  echo WHISPER_PATCH_SCRIPT环境变量未设置，跳过修复`r`n  exit 0`r`n)`r`n`r`nfor /r %%f in (*ggml-cpu.cpp) do (`r`n  echo 发现文件: %%f`r`n  powershell -File ""%WHISPER_PATCH_SCRIPT%"" -filePath ""%%f""`r`n)`r`n`r`nexit 0" -Encoding ascii
           
           Write-Host "已设置构建钩子"
+
+      - name: 缓存依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: 构建项目
         env:
