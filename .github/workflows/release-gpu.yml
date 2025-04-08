@@ -115,13 +115,13 @@ jobs:
       - name: 创建GPU支持配置
         shell: bash
         run: |
-          echo 'WHISPER_CUBLAS=1' >> $GITHUB_ENV
+          echo 'GGML_CUDA=1' >> $GITHUB_ENV
 
       # 构建项目
       - name: 构建GPU加速版本项目
         uses: actions-rs/cargo@v1
         env:
-          WHISPER_CUBLAS: 1
+          GGML_CUDA: 1
           RUSTFLAGS: "-C target-feature=+crt-static -C target-cpu=native"
           # 设置CMake变量
           CMAKE_C_FLAGS: ${{ matrix.os == 'windows-latest' && '/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t' || '' }}
