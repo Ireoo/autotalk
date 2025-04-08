@@ -1,34 +1,20 @@
 #ifdef _WIN32
         HKEY hKey;
-        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-                        TEXT("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"),
-                        0,
-                        KEY_READ,
-                        &hKey) == ERROR_SUCCESS) {
-            DWORD cpu_brand_size = 0;
-            if (RegQueryValueExW(hKey,
-                                L"ProcessorNameString",
-                                NULL,
-                                NULL,
-                                NULL,
-                                &cpu_brand_size) == ERROR_SUCCESS) {
-                std::vector<wchar_t> wbuffer(cpu_brand_size / sizeof(wchar_t));
-                if (RegQueryValueExW(hKey,
-                                    L"ProcessorNameString",
-                                    NULL,
-                                    NULL,
-                                    (LPBYTE)wbuffer.data(),
-                                    &cpu_brand_size) == ERROR_SUCCESS) {
-                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, NULL, 0, NULL, NULL);
-                    if (size_needed > 0) {
-                        description.resize(size_needed);
-                        WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, &description[0], size_needed, NULL, NULL);
-                        if (description.find('\0') != std::string::npos) {
-                            description.resize(description.find('\0'));
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            DWORD size = 0;
+            if (RegQueryValueExW(hKey, L"ProcessorNameString", nullptr, nullptr, nullptr, &size) == ERROR_SUCCESS && size > 0) {
+                std::vector<wchar_t> buf(size/sizeof(wchar_t));
+                if (RegQueryValueExW(hKey, L"ProcessorNameString", nullptr, nullptr, (LPBYTE)buf.data(), &size) == ERROR_SUCCESS) {
+                    // Convert wide string to UTF-8
+                    int utf8_size = WideCharToMultiByte(CP_UTF8, 0, buf.data(), -1, nullptr, 0, nullptr, nullptr);
+                    if (utf8_size > 0) {
+                        std::vector<char> utf8_buf(utf8_size);
+                        if (WideCharToMultiByte(CP_UTF8, 0, buf.data(), -1, utf8_buf.data(), utf8_size, nullptr, nullptr) > 0) {
+                            ggml_cpu_info.name = utf8_buf.data();
                         }
                     }
                 }
             }
             RegCloseKey(hKey);
         }
-#endif 
+#endif

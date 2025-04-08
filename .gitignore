@@ -19,3 +19,4 @@ Cargo.lock
 Thumbs.db 
 cmake-installer.msi
 llvm-installer.exe
+release/
