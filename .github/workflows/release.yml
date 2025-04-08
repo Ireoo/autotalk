@@ -118,21 +118,21 @@ jobs:
           Write-Host "修复脚本已创建"
           
           # 在cargo目录中查找ggml-cpu.cpp文件
-          `$cargoDir = Join-Path `$PWD ".cargo\registry\src"
-          Write-Host "正在搜索目录: `$cargoDir"
+          $cargoDir = Join-Path $PWD ".cargo\registry\src"
+          Write-Host "正在搜索目录: $cargoDir"
           
-          Get-ChildItem -Path `$cargoDir -Filter "ggml-cpu.cpp" -Recurse | ForEach-Object {
-              Write-Host "找到文件: `$(`$_.FullName)"
-              powershell -File fix-ggml-cpu.ps1 -filePath `$_.FullName
+          Get-ChildItem -Path $cargoDir -Filter "ggml-cpu.cpp" -Recurse | ForEach-Object {
+              Write-Host "找到文件: $($_.FullName)"
+              powershell -File fix-ggml-cpu.ps1 -filePath $_.FullName
           }
           
           # 在target目录中查找ggml-cpu.cpp文件
-          `$targetDir = Join-Path `$PWD "target"
-          Write-Host "正在搜索目录: `$targetDir"
+          $targetDir = Join-Path $PWD "target"
+          Write-Host "正在搜索目录: $targetDir"
           
-          Get-ChildItem -Path `$targetDir -Filter "ggml-cpu.cpp" -Recurse | ForEach-Object {
-              Write-Host "找到文件: `$(`$_.FullName)"
-              powershell -File fix-ggml-cpu.ps1 -filePath `$_.FullName
+          Get-ChildItem -Path $targetDir -Filter "ggml-cpu.cpp" -Recurse | ForEach-Object {
+              Write-Host "找到文件: $($_.FullName)"
+              powershell -File fix-ggml-cpu.ps1 -filePath $_.FullName
           }
 
       - name: 缓存依赖
