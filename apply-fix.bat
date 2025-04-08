@@ -9,8 +9,8 @@ REM 清理之前的构建
 echo 开始清理...
 cargo clean
 
-REM 开始构建，但在复制源代码后暂停
-start /wait cmd /c "echo 开始构建... && cargo build --release || exit /b"
+@REM REM 开始构建，但在复制源代码后暂停
+@REM start /wait cmd /c "echo 开始构建... && cargo build --release || exit /b"
 
 echo 构建过程开始，定位ggml-cpu.cpp文件...
 
