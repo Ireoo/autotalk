@@ -79,13 +79,18 @@ jobs:
       - name: 安装LLVM和其他依赖 (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          choco install llvm -y
+          # 使用 scoop 安装 LLVM
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+          irm get.scoop.sh | iex
+          scoop install llvm
+          
+          # 安装其他必要工具
           choco install cmake -y
           choco install visualstudio2022buildtools -y
           choco install visualstudio2022-workload-vctools -y
           
           # 设置环境变量
-          $llvmPath = "C:\Program Files\LLVM"
+          $llvmPath = "$env:USERPROFILE\scoop\apps\llvm\current"
           echo "LIBCLANG_PATH=$llvmPath\bin" >> $env:GITHUB_ENV
           echo "LLVM_CONFIG_PATH=$llvmPath\bin\llvm-config.exe" >> $env:GITHUB_ENV
           echo "CMAKE_PREFIX_PATH=$llvmPath" >> $env:GITHUB_ENV
@@ -102,85 +107,7 @@ jobs:
           echo "CFLAGS=/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t" >> $env:GITHUB_ENV
           echo "CXXFLAGS=/utf-8 /D_UNICODE /DUNICODE /Zc:wchar_t" >> $env:GITHUB_ENV
           
-          # 创建CMakeLists.txt
-          @"
-          cmake_minimum_required(VERSION 3.10)
-          project(whisper-rs-sys)
-          
-          # 设置CMake策略
-          cmake_policy(SET CMP0066 NEW)
-          cmake_policy(SET CMP0082 NEW)
-          cmake_policy(SET CMP0156 NEW)
-          cmake_policy(SET CMP0128 NEW)
-          
-          # 设置Windows特定选项
-          if(WIN32)
-              add_definitions(-DUNICODE -D_UNICODE)
-              set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
-              set(CMAKE_CXX_STANDARD 17)
-              set(CMAKE_CXX_STANDARD_REQUIRED ON)
-              set(CMAKE_CXX_EXTENSIONS OFF)
-              set(CMAKE_C_STANDARD 11)
-              set(CMAKE_C_STANDARD_REQUIRED ON)
-              set(CMAKE_C_EXTENSIONS OFF)
-          endif()
-          
-          # 查找必要的包
-          find_package(OpenSSL REQUIRED)
-          find_package(LLVM REQUIRED CONFIG)
-          
-          # 添加源文件
-          add_library(whisper-rs-sys SHARED
-              src/whisper.cpp
-          )
-          
-          # 设置包含目录
-          target_include_directories(whisper-rs-sys PRIVATE
-              ${CMAKE_CURRENT_SOURCE_DIR}/include
-              ${LLVM_INCLUDE_DIRS}
-              ${OPENSSL_INCLUDE_DIR}
-          )
-          
-          # 链接必要的库
-          if(WIN32)
-              target_link_libraries(whisper-rs-sys PRIVATE
-                  advapi32
-                  kernel32
-                  ${LLVM_LIBRARIES}
-                  OpenSSL::SSL
-                  OpenSSL::Crypto
-              )
-          endif()
-          
-          # 设置输出目录
-          set_target_properties(whisper-rs-sys PROPERTIES
-              RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-              LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-              ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-          )
-          "@ | Out-File -FilePath CMakeLists.txt -Encoding utf8
-          
-          Write-Host "CMake配置已更新"
-          
-          # 创建构建目录并配置CMake
-          New-Item -ItemType Directory -Force -Path "build"
-          Set-Location "build"
-          
-          # 配置CMake
-          Write-Host "正在配置CMake..."
-          cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$llvmPath" -DLLVM_DIR="$llvmPath\lib\cmake\llvm"
-          
-          # 构建项目
-          Write-Host "正在构建项目..."
-          cmake --build . --config Release
-          
-          # 检查构建结果
-          if ($LASTEXITCODE -ne 0) {
-              Write-Host "构建失败，错误代码: $LASTEXITCODE"
-              exit 1
-          }
-          
-          Write-Host "构建成功完成"
+          Write-Host "LLVM 和其他依赖安装完成"
 
       # - name: 缓存依赖
       #   uses: actions/cache@v4
