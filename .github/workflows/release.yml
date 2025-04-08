@@ -289,10 +289,9 @@ jobs:
           # 设置环境变量，告知何处可以找到修复脚本
           echo "WHISPER_PATCH_SCRIPT=$PWD\fix-ggml-cpu.ps1" >> $env:GITHUB_ENV
           
-          # 运行前挂钩：在Cargo.toml中使用whisper-rs-sys的补丁
           # 创建.cargo/config.toml文件
           New-Item -Path ".cargo" -ItemType Directory -Force
-          Set-Content -Path ".cargo\config.toml" -Value "[env]`r`nWHISPER_PATCH_SCRIPT = ""$PWD\fix-ggml-cpu.ps1""`r`n`r`n[build]`r`nrustflags = [""-C"", ""target-cpu=native""]`r`n`r`n[target.x86_64-pc-windows-msvc.whisper-rs-sys]`r`nrustc-env = { WHISPER_PATCH_SCRIPT = ""$PWD\fix-ggml-cpu.ps1"" }"
+          Set-Content -Path ".cargo/config.toml" -Value "[env]`r`nWHISPER_PATCH_SCRIPT = ""$PWD/fix-ggml-cpu.ps1""`r`n`r`n[build]`r`nrustflags = [""-C"", ""target-cpu=native""]`r`n`r`n[target.x86_64-pc-windows-msvc.whisper-rs-sys]`r`nrustc-env = { WHISPER_PATCH_SCRIPT = ""$PWD/fix-ggml-cpu.ps1"" }"
           
           # 添加自定义钩子
           $hookDir = "$env:USERPROFILE\.cargo\hooks"
