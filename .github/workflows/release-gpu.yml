@@ -80,6 +80,13 @@ jobs:
           echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
           echo "OPENSSL_INCLUDE_DIR=/usr/include/openssl" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          # 设置编译标志
+          echo "CFLAGS=-I/usr/include/openssl" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          # 验证OpenSSL安装
+          pkg-config --libs --cflags openssl
+          ls -la /usr/include/openssl
+          ls -la /usr/lib/x86_64-linux-gnu/libssl*
 
       - name: 安装LLVM和其他依赖 (Windows)
         if: matrix.os == 'windows-latest'
