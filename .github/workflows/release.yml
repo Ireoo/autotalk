@@ -112,6 +112,56 @@ jobs:
               Write-Host "已修复文件: `$filePath"
           } else {
               Write-Host "文件不需要修改或模式匹配失败"
+              
+              # 尝试完全替换Windows部分代码
+              $windowsCode = "#ifdef _WIN32`r`n" +
+                  "        HKEY hKey;`r`n" +
+                  "        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,`r`n" +
+                  "                        TEXT(""HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0""),`r`n" +
+                  "                        0,`r`n" +
+                  "                        KEY_READ,`r`n" +
+                  "                        &hKey) == ERROR_SUCCESS) {`r`n" +
+                  "            DWORD cpu_brand_size = 0;`r`n" +
+                  "            if (RegQueryValueExW(hKey,`r`n" +
+                  "                                L""ProcessorNameString"",`r`n" +
+                  "                                NULL,`r`n" +
+                  "                                NULL,`r`n" +
+                  "                                NULL,`r`n" +
+                  "                                &cpu_brand_size) == ERROR_SUCCESS) {`r`n" +
+                  "                std::vector<wchar_t> wbuffer(cpu_brand_size / sizeof(wchar_t));`r`n" +
+                  "                if (RegQueryValueExW(hKey,`r`n" +
+                  "                                    L""ProcessorNameString"",`r`n" +
+                  "                                    NULL,`r`n" +
+                  "                                    NULL,`r`n" +
+                  "                                    (LPBYTE)wbuffer.data(),`r`n" +
+                  "                                    &cpu_brand_size) == ERROR_SUCCESS) {`r`n" +
+                  "                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, NULL, 0, NULL, NULL);`r`n" +
+                  "                    if (size_needed > 0) {`r`n" +
+                  "                        description.resize(size_needed);`r`n" +
+                  "                        WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, &description[0], size_needed, NULL, NULL);`r`n" +
+                  "                        if (description.find('\\0') != std::string::npos) {`r`n" +
+                  "                            description.resize(description.find('\\0'));`r`n" +
+                  "                        }`r`n" +
+                  "                    }`r`n" +
+                  "                }`r`n" +
+                  "            }`r`n" +
+                  "            RegCloseKey(hKey);`r`n" +
+                  "        }`r`n" +
+                  "#endif"
+              
+              # 使用正则表达式替换整个Windows代码块
+              `$pattern = "(?s)#ifdef _WIN32.*?RegQueryValueExA.*?RegCloseKey.*?#endif"
+              `$newContent = [regex]::Replace(`$content, `$pattern, `$windowsCode)
+              
+              if (`$newContent -ne `$content) {
+                  Write-Host "正在替换整个Windows代码块..."
+                  Set-Content -Path `$filePath -Value `$newContent
+                  Write-Host "已完全替换Windows代码块: `$filePath"
+              } else {
+                  Write-Host "无法自动修复，将显示文件内容进行调试..."
+                  `$fileContent = Get-Content `$filePath -Raw
+                  Write-Host "`$fileContent"
+              }
           }
           "@ | Out-File -FilePath fix-ggml-cpu.ps1 -Encoding utf8
           
@@ -138,6 +188,44 @@ jobs:
           } else {
               Write-Host "目录 target 不存在，跳过搜索"
           }
+          
+          # 添加CMake配置修复
+          @"
+          cmake_minimum_required(VERSION 3.10)
+          project(whisper-rs-sys)
+          
+          # 设置CMake策略
+          cmake_policy(SET CMP0066 NEW)
+          cmake_policy(SET CMP0082 NEW)
+          cmake_policy(SET CMP0156 NEW)
+          cmake_policy(SET CMP0128 NEW)
+          
+          # 设置Windows特定选项
+          if(WIN32)
+              add_definitions(-DUNICODE -D_UNICODE)
+              set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+          endif()
+          
+          # 添加源文件
+          add_library(whisper-rs-sys SHARED
+              src/whisper.cpp
+          )
+          
+          # 设置包含目录
+          target_include_directories(whisper-rs-sys PRIVATE
+              ${CMAKE_CURRENT_SOURCE_DIR}/include
+          )
+          
+          # 链接必要的库
+          if(WIN32)
+              target_link_libraries(whisper-rs-sys PRIVATE
+                  advapi32
+                  kernel32
+              )
+          endif()
+          "@ | Out-File -FilePath CMakeLists.txt -Encoding utf8
+          
+          Write-Host "CMake配置已更新"
 
       - name: 缓存依赖
         uses: actions/cache@v4
