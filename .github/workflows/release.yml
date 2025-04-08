@@ -46,6 +46,7 @@ jobs:
           echo "LIBCLANG_PATH=/usr/lib/llvm-*/lib" >> $GITHUB_ENV
           echo "CMAKE_C_FLAGS=-m64" >> $GITHUB_ENV
           echo "CMAKE_CXX_FLAGS=-m64" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
 
       - name: 安装LLVM和其他依赖 (macOS)
         if: matrix.os == 'macos-latest'
@@ -62,6 +63,8 @@ jobs:
           choco install cmake -y
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
           echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
+          echo "CMAKE_C_FLAGS=-DUNICODE -D_UNICODE" >> $GITHUB_ENV
+          echo "CMAKE_CXX_FLAGS=-DUNICODE -D_UNICODE" >> $GITHUB_ENV
 
       - name: 缓存依赖
         uses: actions/cache@v4
@@ -79,6 +82,8 @@ jobs:
           CMAKE_C_FLAGS: ${{ env.CMAKE_C_FLAGS }}
           CMAKE_CXX_FLAGS: ${{ env.CMAKE_CXX_FLAGS }}
           RUSTFLAGS: "-C target-cpu=native"
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+          CFLAGS: ""  # 清空 CFLAGS 以避免继承有问题的标志
         uses: actions-rs/cargo@v1
         with:
           command: build
