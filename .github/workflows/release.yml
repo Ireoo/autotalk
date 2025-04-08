@@ -92,6 +92,113 @@ jobs:
           # 设置编译标志
           echo "CMAKE_C_FLAGS=-DUNICODE -D_UNICODE" >> $env:GITHUB_ENV
           echo "CMAKE_CXX_FLAGS=-DUNICODE -D_UNICODE" >> $env:GITHUB_ENV
+          
+      # 新增步骤：创建补丁钩子，用于修复whisper-rs-sys构建错误
+      - name: 设置whisper-rs-sys构建钩子 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          # 创建构建钩子目录
+          mkdir -p $env:USERPROFILE\.cargo\target-hooks\whisper-rs-sys
+          
+          # 创建钩子脚本
+          @"
+          @echo off
+          setlocal enabledelayedexpansion
+          
+          if "%1" == "pre-build" (
+            echo "正在应用whisper-rs-sys补丁..."
+            
+            for /r %%f in (*ggml-cpu.cpp) do (
+              echo "检查文件: %%f"
+              
+              powershell -Command "(Get-Content '%%f') -replace 'RegQueryValueExA\(hKey,\s*L\"ProcessorNameString\"', 'RegQueryValueExW(hKey, L\"ProcessorNameString\"' | Set-Content '%%f'"
+              
+              echo "已修复文件: %%f"
+            )
+            
+            exit 0
+          )
+          
+          exit 0
+          "@ | Out-File -FilePath $env:USERPROFILE\.cargo\target-hooks\whisper-rs-sys\hook.bat -Encoding ascii
+          
+          # 输出钩子文件内容以验证
+          type $env:USERPROFILE\.cargo\target-hooks\whisper-rs-sys\hook.bat
+          
+          # 设置钩子环境变量
+          echo "CARGO_TARGET_HOOKS=1" >> $env:GITHUB_ENV
+          
+      # 添加备用方法：直接修改whisper-cpp源码
+      - name: 准备whisper-cpp补丁 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          # 创建补丁文件
+          $patchContent = @'
+          #ifdef _WIN32
+                  HKEY hKey;
+                  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                                  TEXT("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"),
+                                  0,
+                                  KEY_READ,
+                                  &hKey) == ERROR_SUCCESS) {
+                      DWORD cpu_brand_size = 0;
+                      if (RegQueryValueExW(hKey,
+                                          L"ProcessorNameString",
+                                          NULL,
+                                          NULL,
+                                          NULL,
+                                          &cpu_brand_size) == ERROR_SUCCESS) {
+                          std::vector<wchar_t> wbuffer(cpu_brand_size / sizeof(wchar_t));
+                          if (RegQueryValueExW(hKey,
+                                              L"ProcessorNameString",
+                                              NULL,
+                                              NULL,
+                                              (LPBYTE)wbuffer.data(),
+                                              &cpu_brand_size) == ERROR_SUCCESS) {
+                              int size_needed = WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, NULL, 0, NULL, NULL);
+                              if (size_needed > 0) {
+                                  description.resize(size_needed);
+                                  WideCharToMultiByte(CP_UTF8, 0, wbuffer.data(), -1, &description[0], size_needed, NULL, NULL);
+                                  if (description.find('\0') != std::string::npos) {
+                                      description.resize(description.find('\0'));
+                                  }
+                              }
+                          }
+                      }
+                      RegCloseKey(hKey);
+                  }
+          #endif
+          '@
+          
+          Set-Content -Path "ggml-cpu-fix.txt" -Value $patchContent
+          
+          # 创建用于替换的脚本
+          $scriptContent = @'
+          param($buildDir)
+          
+          $fixContent = Get-Content "ggml-cpu-fix.txt" -Raw
+          
+          # 查找所有的ggml-cpu.cpp文件
+          Get-ChildItem -Path $buildDir -Filter "ggml-cpu.cpp" -Recurse | ForEach-Object {
+              $filePath = $_.FullName
+              Write-Host "正在处理文件: $filePath"
+              
+              $content = Get-Content $filePath -Raw
+              
+              # 替换Windows部分代码
+              if ($content -match "#elif defined\(_WIN32\)[^#]+#endif") {
+                  $pattern = "#elif defined\(_WIN32\)[^#]+#endif"
+                  $newContent = $content -replace $pattern, "#elif defined(_WIN32)`r`n$fixContent`r`n"
+                  Set-Content -Path $filePath -Value $newContent
+                  Write-Host "已修复文件: $filePath"
+              }
+          }
+          '@
+          
+          Set-Content -Path "fix-whisper-rs.ps1" -Value $scriptContent
+          
+          # 设置环境变量以在构建前运行修复脚本
+          echo "WHISPER_RS_PRE_BUILD_SCRIPT=$PWD\fix-whisper-rs.ps1" >> $env:GITHUB_ENV
 
       - name: 缓存依赖
         uses: actions/cache@v4
@@ -120,6 +227,20 @@ jobs:
           command: build
           args: --release --verbose
         timeout-minutes: 30
+        
+      # 添加Windows平台下的修复步骤
+      - name: 应用Windows补丁并构建
+        if: matrix.os == 'windows-latest'
+        run: |
+          # 运行修复脚本
+          if (Test-Path env:WHISPER_RS_PRE_BUILD_SCRIPT) {
+            Write-Host "运行预构建修复脚本..."
+            $buildDir = Join-Path $PWD "target\release\build"
+            powershell -File $env:WHISPER_RS_PRE_BUILD_SCRIPT -buildDir $buildDir
+            
+            # 重新执行构建命令
+            cargo build --release --verbose
+          }
 
       - name: 创建资源目录
         run: |
