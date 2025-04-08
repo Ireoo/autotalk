@@ -55,6 +55,9 @@ jobs:
           wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
           sudo dpkg -i cuda-keyring_1.0-1_all.deb
           sudo apt-get update
+          # 安装libtinfo5依赖
+          sudo apt-get -y install libtinfo5 || sudo apt-get -y install libncurses5
+          # 安装CUDA工具包
           sudo apt-get -y install cuda-toolkit-11-8
           # 设置环境变量
           echo "CUDA_PATH=/usr/local/cuda-11.8" >> $GITHUB_ENV
