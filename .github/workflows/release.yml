@@ -53,7 +53,18 @@ jobs:
           # 设置明确的OpenSSL库路径
           echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
           echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=/usr/lib/llvm-*/lib" >> $GITHUB_ENV
+          
+          # 准确查找并设置libclang路径
+          sudo apt-get install -y libclang1
+          LLVM_PATH=$(find /usr/lib -type d -name "llvm-*" | sort -V | tail -n 1)
+          if [ -z "$LLVM_PATH" ]; then
+            LLVM_PATH="/usr/lib/llvm-14" # 回退到默认版本
+            sudo apt-get install -y llvm-14 libclang-14-dev
+          fi
+          LIBCLANG_PATH="$LLVM_PATH/lib"
+          echo "找到libclang路径: $LIBCLANG_PATH"
+          echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
+          
           echo "CMAKE_C_FLAGS=-m64" >> $GITHUB_ENV
           echo "CMAKE_CXX_FLAGS=-m64" >> $GITHUB_ENV
 
@@ -94,6 +105,8 @@ jobs:
           OPENSSL_LIB_DIR: ${{ env.OPENSSL_LIB_DIR }}
           OPENSSL_INCLUDE_DIR: ${{ env.OPENSSL_INCLUDE_DIR }}
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
+          BINDGEN_EXTRA_CLANG_ARGS: "-I/usr/include/clang"
           CFLAGS: ""  # 清空 CFLAGS 以避免继承有问题的标志
         uses: actions-rs/cargo@v1
         with:
