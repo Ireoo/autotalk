@@ -1,0 +1,208 @@
+name: 构建GPU加速版本
+
+on: [push, workflow_dispatch]
+
+# 添加明确的权限设置
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.os }} GPU
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: autotalk-gpu.exe
+            asset_name: autotalk-windows-x64-gpu.zip
+            cuda_version: "11.8.0"
+          - os: ubuntu-latest
+            artifact_name: autotalk-gpu
+            asset_name: autotalk-linux-x64-gpu.tar.gz
+            cuda_version: "11.8.0"
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Rust工具链
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      # 安装CUDA (Windows)
+      - name: 安装CUDA (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $CUDA_URL = "https://developer.download.nvidia.com/compute/cuda/${{ matrix.cuda_version }}/network_installers/cuda_${{ matrix.cuda_version }}_windows_network.exe"
+          $CUDA_EXE = "cuda_installer.exe"
+          Invoke-WebRequest -Uri $CUDA_URL -OutFile $CUDA_EXE
+          Start-Process -FilePath $CUDA_EXE -ArgumentList "-s nvcc_${{ matrix.cuda_version }} cublas_${{ matrix.cuda_version }} cudart_${{ matrix.cuda_version }} curand_${{ matrix.cuda_version }}" -Wait
+          # 设置环境变量
+          echo "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      # 安装CUDA (Linux)
+      - name: 安装CUDA (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
+          sudo dpkg -i cuda-keyring_1.0-1_all.deb
+          sudo apt-get update
+          sudo apt-get -y install cuda-toolkit-11-8
+          # 设置环境变量
+          echo "CUDA_PATH=/usr/local/cuda-11.8" >> $GITHUB_ENV
+          echo "/usr/local/cuda-11.8/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: 安装LLVM和其他依赖 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev libclang-dev clang cmake pkg-config libssl-dev libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libasound2-dev
+
+      - name: 安装LLVM和其他依赖 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install llvm -y
+          choco install cmake -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
+          echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
+
+      - name: 缓存依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-gpu-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-gpu-
+
+      # 创建GPU支持的配置
+      - name: 创建GPU支持配置
+        shell: bash
+        run: |
+          echo 'WHISPER_CUBLAS=1' >> $GITHUB_ENV
+
+      # 构建项目
+      - name: 构建GPU加速版本项目
+        uses: actions-rs/cargo@v1
+        env:
+          WHISPER_CUBLAS: 1
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        with:
+          command: build
+          args: --release --features real_whisper
+        timeout-minutes: 30
+
+      - name: 创建资源目录
+        run: |
+          mkdir -p resources/models
+
+      - name: 打包应用 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir release-package
+          cp target/release/autotalk.exe release-package/autotalk-gpu.exe
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          # 复制CUDA运行时库
+          cp "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\cudart64_118.dll" release-package/
+          cp "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\cublas64_118.dll" release-package/
+          cp "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\cublasLt64_118.dll" release-package/
+          # 创建使用说明
+          echo "# GPU加速版本使用说明" > release-package/GPU加速说明.txt
+          echo "本版本支持NVIDIA GPU加速，需要安装CUDA运行时环境。" >> release-package/GPU加速说明.txt
+          echo "要求：" >> release-package/GPU加速说明.txt
+          echo "1. 安装NVIDIA显卡驱动" >> release-package/GPU加速说明.txt
+          echo "2. 如果运行时找不到CUDA动态库，请安装CUDA Toolkit 11.8或更高版本" >> release-package/GPU加速说明.txt
+          cd release-package
+          7z a ../${{ matrix.asset_name }} *
+
+      - name: 打包应用 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir release-package
+          cp target/release/autotalk release-package/autotalk-gpu
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          # 创建使用说明
+          echo "# GPU加速版本使用说明" > release-package/GPU加速说明.txt
+          echo "本版本支持NVIDIA GPU加速，需要安装CUDA运行时环境。" >> release-package/GPU加速说明.txt
+          echo "要求：" >> release-package/GPU加速说明.txt
+          echo "1. 安装NVIDIA显卡驱动" >> release-package/GPU加速说明.txt
+          echo "2. 安装CUDA Toolkit 11.8或更高版本" >> release-package/GPU加速说明.txt
+          cd release-package
+          tar -czvf ../${{ matrix.asset_name }} *
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    name: 创建GPU版本发布
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: 准备发布文件
+        run: |
+          mkdir -p ./release-files
+          cp ./artifacts/autotalk-windows-x64-gpu.zip/autotalk-windows-x64-gpu.zip ./release-files/ || true
+          cp ./artifacts/autotalk-linux-x64-gpu.tar.gz/autotalk-linux-x64-gpu.tar.gz ./release-files/ || true
+          ls -la ./release-files
+
+      - name: 获取当前日期
+        id: date
+        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: 获取提交哈希
+        id: commit
+        run: echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 生成版本号
+        id: version
+        run: echo "VERSION=${{ steps.date.outputs.DATE }}.${{ steps.commit.outputs.COMMIT }}-gpu" >> $GITHUB_OUTPUT
+
+      - name: 创建发布
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ github.token }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: AutoTalk GPU ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            ./release-files/autotalk-windows-x64-gpu.zip
+            ./release-files/autotalk-linux-x64-gpu.tar.gz
+
+      - name: 输出调试信息
+        if: always()
+        run: |
+          echo "Version: ${{ steps.version.outputs.VERSION }}"
+          echo "Date: ${{ steps.date.outputs.DATE }}"
+          echo "Commit: ${{ steps.commit.outputs.COMMIT }}"
+          ls -la 

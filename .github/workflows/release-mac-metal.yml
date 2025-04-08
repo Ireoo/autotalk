@@ -1,0 +1,133 @@
+name: 构建MacOS Metal加速版本
+
+on: [push, workflow_dispatch]
+
+# 添加明确的权限设置
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: 构建 MacOS Metal
+    runs-on: macos-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Rust工具链
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: 安装LLVM和其他依赖
+        run: |
+          brew install llvm cmake
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+
+      - name: 缓存依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-cargo-metal-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-cargo-metal-
+
+      # 创建Metal支持的配置
+      - name: 创建Metal支持配置
+        run: |
+          echo 'WHISPER_METAL=1' >> $GITHUB_ENV
+
+      # 构建项目
+      - name: 构建Metal加速版本项目
+        uses: actions-rs/cargo@v1
+        env:
+          WHISPER_METAL: 1
+        with:
+          command: build
+          args: --release --features real_whisper
+        timeout-minutes: 30
+
+      - name: 创建资源目录
+        run: |
+          mkdir -p resources/models
+
+      - name: 打包应用
+        run: |
+          mkdir release-package
+          cp target/release/autotalk release-package/autotalk-metal
+          cp -r assets release-package/
+          cp -r resources release-package/
+          cp README.md release-package/
+          cp LICENSE release-package/
+          # 创建使用说明
+          echo "# Metal加速版本使用说明" > release-package/Metal加速说明.txt
+          echo "本版本支持Apple Metal加速，针对Mac设备优化。" >> release-package/Metal加速说明.txt
+          echo "要求：" >> release-package/Metal加速说明.txt
+          echo "1. macOS 10.15 (Catalina) 或更高版本" >> release-package/Metal加速说明.txt
+          echo "2. 支持Metal的Apple设备" >> release-package/Metal加速说明.txt
+          cd release-package
+          zip -r ../autotalk-macos-metal.zip *
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: autotalk-macos-metal.zip
+          path: autotalk-macos-metal.zip
+
+  release:
+    name: 创建MacOS Metal版本发布
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: 准备发布文件
+        run: |
+          mkdir -p ./release-files
+          cp ./artifacts/autotalk-macos-metal.zip/autotalk-macos-metal.zip ./release-files/ || true
+          ls -la ./release-files
+
+      - name: 获取当前日期
+        id: date
+        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: 获取提交哈希
+        id: commit
+        run: echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 生成版本号
+        id: version
+        run: echo "VERSION=${{ steps.date.outputs.DATE }}.${{ steps.commit.outputs.COMMIT }}-metal" >> $GITHUB_OUTPUT
+
+      - name: 创建发布
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ github.token }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: AutoTalk MacOS Metal ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            ./release-files/autotalk-macos-metal.zip
+
+      - name: 输出调试信息
+        if: always()
+        run: |
+          echo "Version: ${{ steps.version.outputs.VERSION }}"
+          echo "Date: ${{ steps.date.outputs.DATE }}"
+          echo "Commit: ${{ steps.commit.outputs.COMMIT }}"
+          ls -la 
