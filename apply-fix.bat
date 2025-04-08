@@ -45,4 +45,8 @@ for /f "delims=" %%i in ('dir /s /b target\debug\build\whisper-rs-sys*\out\whisp
 )
 
 :done
+
+echo 开始构建...
+cargo build --release || exit /b
+
 echo 脚本执行完成 

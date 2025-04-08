@@ -153,7 +153,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           mkdir release-package
-          cp ../target/release/autotalk.exe release-package/
+          tree
+          cp target/release/autotalk.exe release-package/
           cp -r assets release-package/
           cp -r resources release-package/
           cp README.md release-package/
