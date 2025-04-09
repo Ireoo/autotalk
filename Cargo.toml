@@ -45,4 +45,5 @@ panic = "abort"
 strip = true
 [features]
 default = ["real_whisper"]
-real_whisper = ["whisper-rs"] 
+real_whisper = ["whisper-rs"]
+cuda = ["real_whisper"] 
