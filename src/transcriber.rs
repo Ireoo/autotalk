@@ -270,7 +270,7 @@ impl Transcriber {
                 format!("【提示】正在使用真实转写功能，使用模型: {}。", model_name);
             text_tx.send(initial_message).ok();
 
-            // 准备转写参数
+            // 准备转写参数 - 优化参数设置
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 0 });
             params.set_translate(false); // 不翻译
             params.set_language(Some("zh")); // 设置为中文
@@ -278,12 +278,33 @@ impl Transcriber {
             params.set_print_progress(false);
             params.set_print_realtime(false);
             params.set_print_timestamps(false);
-            params.set_token_timestamps(true);
+            params.set_token_timestamps(false); // 修改为false，提高效率
             params.set_single_segment(true); // 单段落模式
+            params.set_no_context(true); // 使用不保留上下文模式，提高速度
+            params.set_duration_ms(1000); // 将音频片段设为1秒，符合模型要求
+            // 设置更多高效处理选项
+            params.set_suppress_blank(true); // 抑制空白
+            params.set_suppress_nst(true); // 抑制非语音标记
+            params.set_initial_prompt(""); // 无需初始提示
 
-            // 存储已处理的音频，以便累积足够长度再处理
-            let mut audio_buffer: Vec<f32> = Vec::with_capacity(16000 * 30); // 预留30秒
+            // 优化：预分配缓冲区，并减小处理周期
+            let mut audio_buffer: Vec<f32> = Vec::with_capacity(16000 * 10); // 预留10秒
             let mut last_process_time = std::time::Instant::now();
+            
+            // 创建一个可重用的state对象，避免反复创建
+            let mut reusable_state = match ctx.lock() {
+                Ok(guard) => match guard.create_state() {
+                    Ok(state) => Some(state),
+                    Err(e) => {
+                        error!("初始化状态失败: {:?}", e);
+                        None
+                    }
+                },
+                Err(e) => {
+                    error!("获取模型上下文锁失败: {:?}", e);
+                    None
+                }
+            };
 
             while !should_stop.load(Ordering::SeqCst) {
                 match audio_rx.recv_timeout(Duration::from_millis(100)) {
@@ -291,66 +312,61 @@ impl Transcriber {
                         // 累积音频数据
                         audio_buffer.extend_from_slice(&audio_data);
 
-                        // 每隔1秒或缓冲区超过5秒，处理一次音频
+                        // 确保有足够长的音频数据（至少1秒）且避免过于频繁处理
                         let buffer_duration = audio_buffer.len() as f32 / 16000.0; // 假设采样率为16kHz
                         let elapsed = last_process_time.elapsed().as_secs_f32();
 
-                        if buffer_duration >= 5.0 || elapsed >= 1.0 {
-                            if !audio_buffer.is_empty() {
-                                // 锁定上下文进行处理
-                                let mut ctx_guard = match ctx.lock() {
+                        if buffer_duration >= 2.0 || (buffer_duration >= 1.0 && elapsed >= 0.5) {
+                            if !audio_buffer.is_empty() && reusable_state.is_some() {
+                                // 锁定上下文进行处理，但缩短锁定时间
+                                let _ctx_guard = match ctx.try_lock() {
                                     Ok(guard) => guard,
-                                    Err(e) => {
-                                        error!("获取模型上下文锁失败: {:?}", e);
+                                    Err(_) => {
+                                        // 如果获取不到锁，跳过这次处理
                                         continue;
                                     }
                                 };
-
-                                // 创建状态
-                                let mut state = match ctx_guard.create_state() {
-                                    Ok(state) => state,
-                                    Err(e) => {
-                                        error!("创建状态失败: {:?}", e);
-                                        continue;
-                                    }
-                                };
+                                
+                                let state = reusable_state.as_mut().unwrap();
 
                                 // 处理音频数据
                                 match state.full(params.clone(), &audio_buffer) {
                                     Ok(_) => {
                                         // 从模型中获取文本
-                                        let num_segments = match state.full_n_segments() {
-                                            Ok(n) => n,
-                                            Err(e) => {
-                                                error!("获取段落数量失败: {:?}", e);
-                                                continue;
-                                            }
-                                        };
-
-                                        for i in 0..num_segments {
-                                            if let Ok(segment) = state.full_get_segment_text(i)
-                                            {
-                                                let trimmed = segment.trim();
-                                                if !trimmed.is_empty() {
-                                                    // 发送识别的文本
-                                                    if let Err(e) =
-                                                        text_tx.send(trimmed.to_string())
-                                                    {
-                                                        error!("发送转写文本失败: {}", e);
-                                                        break;
+                                        if let Ok(num_segments) = state.full_n_segments() {
+                                            for i in 0..num_segments {
+                                                if let Ok(segment) = state.full_get_segment_text(i) {
+                                                    let trimmed = segment.trim();
+                                                    if !trimmed.is_empty() {
+                                                        // 发送识别的文本
+                                                        if let Err(e) = text_tx.send(trimmed.to_string()) {
+                                                            error!("发送转写文本失败: {}", e);
+                                                            break;
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+                                        
+                                        // 优化：保留一小部分末尾音频数据，提高连续性
+                                        let retain_size = (0.5 * 16000.0) as usize; // 保留半秒数据
+                                        if audio_buffer.len() > retain_size {
+                                            let retain_data: Vec<f32> = audio_buffer[audio_buffer.len() - retain_size..].to_vec();
+                                            audio_buffer.clear();
+                                            audio_buffer.extend_from_slice(&retain_data);
+                                        } else {
+                                            audio_buffer.clear();
+                                        }
+                                        
+                                        last_process_time = std::time::Instant::now();
                                     }
                                     Err(e) => {
                                         error!("处理音频数据失败: {:?}", e);
+                                        // 出错时清空缓冲区，防止错误累积
+                                        audio_buffer.clear();
+                                        last_process_time = std::time::Instant::now();
                                     }
                                 }
-
-                                // 清空缓冲区，准备下一批数据
-                                audio_buffer.clear();
-                                last_process_time = std::time::Instant::now();
                             }
                         }
                     }

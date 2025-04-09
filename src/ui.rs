@@ -34,6 +34,7 @@ pub struct AutoTalkApp {
     selected_device_idx: Option<usize>,
     copy_status: String,
     auto_scroll: bool,
+    playback_enabled: bool, // 新增：实时播放开关状态
 
     // 资源下载相关
     download_status_receiver: Option<Receiver<DownloadStatus>>,
@@ -89,6 +90,7 @@ impl AutoTalkApp {
             selected_device_idx: None,
             copy_status: String::new(),
             auto_scroll: true,
+            playback_enabled: true, // 初始化为启用状态
 
             download_status_receiver: None,
             download_statuses: HashMap::new(),
@@ -116,6 +118,9 @@ impl AutoTalkApp {
                 return Err(anyhow::anyhow!("创建AudioCapture实例失败: {}", e));
             }
         };
+
+        // 设置播放状态
+        audio.set_playback_enabled(self.playback_enabled);
 
         // 列出可用麦克风设备
         match audio.list_devices() {
@@ -936,6 +941,22 @@ impl AutoTalkApp {
                 });
 
                 ui.add_space(10.0);
+
+                // 添加实时播放开关
+                ui.add_space(5.0);
+                ui.horizontal(|ui| {
+                    ui.label("实时播放:");
+                    if ui.checkbox(&mut self.playback_enabled, "").changed() {
+                        if let Some(audio) = &mut self.audio_capture {
+                            audio.set_playback_enabled(self.playback_enabled);
+                            self.status = if self.playback_enabled {
+                                "已启用实时播放".to_string()
+                            } else {
+                                "已禁用实时播放".to_string()
+                            };
+                        }
+                    }
+                });
 
                 if ui.button("应用并重启").clicked() {
                     if let Some(audio) = &mut self.audio_capture {
