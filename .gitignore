@@ -20,3 +20,4 @@ Thumbs.db
 cmake-installer.msi
 llvm-installer.exe
 release/
+fix_logs/
