@@ -21,11 +21,6 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Install CMake
-      uses: actions/setup-cmake@v3
-      with:
-        cmake-version: '3.20.0'
-
     - name: Install dependencies (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -36,6 +31,11 @@ jobs:
       if: matrix.os == 'macos-latest'
       run: |
         brew install cmake
+
+    - name: Install CMake (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
 
     - name: Build Project
       run: |
