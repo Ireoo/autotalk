@@ -26,17 +26,21 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential git cmake
+        sudo apt-get install -y build-essential git
+        wget https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-linux-x86_64.sh
+        chmod +x cmake-3.29.2-linux-x86_64.sh
+        sudo ./cmake-3.29.2-linux-x86_64.sh --skip-license --prefix=/usr/local
 
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake
+        brew install cmake@3.29.2
+        brew link --force cmake@3.29.2
 
     - name: Install CMake (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+        choco install cmake --version=3.29.2 --installargs 'ADD_CMAKE_TO_PATH=System'
 
     - name: Build Project
       run: |
