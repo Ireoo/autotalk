@@ -9,9 +9,9 @@ echo "==== 开始构建项目 ===="
 echo "当前工作目录: $(pwd)"
 
 # 检查并下载依赖项
-if [ ! -d "third_party/portaudio" ]; then
+if [ ! -d "portaudio" ]; then
     echo "正在下载PortAudio..."
-    git clone https://github.com/PortAudio/portaudio.git third_party/portaudio
+    git clone https://github.com/PortAudio/portaudio.git
 fi
 
 # 检查并下载 libsndfile
@@ -44,7 +44,7 @@ cd ../..
 
 # 构建 PortAudio
 echo "正在构建 PortAudio..."
-cd third_party/portaudio
+cd portaudio
 if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" ]]; then
     ./configure
     make
@@ -55,7 +55,7 @@ elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     cmake --build . --config Release
     cd ..
 fi
-cd ../..
+cd ..
 
 # 构建 libsndfile
 echo "正在构建 libsndfile..."
@@ -128,10 +128,10 @@ fi
 echo "正在复制DLL文件..."
 
 # 复制PortAudio DLL
-if [ -f "third_party/portaudio/build/Release/portaudio.dll" ]; then
-    cp -f third_party/portaudio/build/Release/portaudio.dll Release/
-elif [ -f "third_party/portaudio/build/Debug/portaudio.dll" ]; then
-    cp -f third_party/portaudio/build/Debug/portaudio.dll Release/
+if [ -f "portaudio/build/Release/portaudio.dll" ]; then
+    cp -f portaudio/build/Release/portaudio.dll Release/
+elif [ -f "portaudio/build/Debug/portaudio.dll" ]; then
+    cp -f portaudio/build/Debug/portaudio.dll Release/
 else
     echo "错误: 找不到portaudio.dll"
     exit 1
