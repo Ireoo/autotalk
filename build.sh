@@ -33,7 +33,7 @@ echo "系统类型: $OSTYPE"
 # 构建Boost库
 cd third_party/boost
 echo "正在构建Boost库..."
-if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" ]]; then
+if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
     ./bootstrap.sh --with-libraries=atomic,thread,system,filesystem,regex,date_time,chrono
     ./b2 install --prefix=../install
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
@@ -45,7 +45,7 @@ cd ../..
 # 构建 PortAudio
 echo "正在构建 PortAudio..."
 cd portaudio
-if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" ]]; then
+if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
     ./configure
     make
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
@@ -60,8 +60,8 @@ cd ..
 # 构建 libsndfile
 echo "正在构建 libsndfile..."
 cd third_party/libsndfile
-if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" ]]; then
-    ./autogen.sh
+if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
+    # ./autogen.sh
     ./configure
     make
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
@@ -149,9 +149,7 @@ else
 fi
 
 # 复制Boost DLL文件
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    cp -f third_party/install/lib/*.dll Release/
-fi
+cp -f third_party/install/lib/*.dll Release/
 
 # 复制模型文件
 cp -f models/*.bin Release/
