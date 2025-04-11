@@ -28,6 +28,8 @@ if [ ! -d "third_party/boost" ]; then
     git clone --recursive https://github.com/boostorg/boost.git third_party/boost
 fi
 
+echo "系统类型: $OSTYPE"
+
 # 构建Boost库
 cd third_party/boost
 echo "正在构建Boost库..."
@@ -185,7 +187,6 @@ cd ../../../
 echo "构建完成！"
 
 echo "==== 构建完成 ===="
-echo "可执行文件位于 Release 目录中"
-# 运行程序
+echo "可执行文件位于 Release 目录中"# 运行程序
 
 # ./Release/autotalk.exe models/ggml-medium-zh.bin
