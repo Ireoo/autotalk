@@ -157,14 +157,21 @@ void processSpeechRecognition()
                         audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
                         if (running)
                         {
-                            std::cout << "\r" << std::string(100, ' ') << "\r[" << timestamp << "]: 识别中..." << std::flush;
+                            CONSOLE_SCREEN_BUFFER_INFO csbi;
+                            GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+                            int consoleWidth = csbi.dwSize.X;
+                            std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: 识别中..." << std::flush;
                         }
                     }
                     else
                     {
                         if (running)
                         {
-                            std::cout << "\r" << std::string(100, ' ') << "\r[" << timestamp << "]: " << recognized_text << std::flush;
+                            // 获取控制台宽度，用于清除当前行
+                            CONSOLE_SCREEN_BUFFER_INFO csbi;
+                            GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+                            int consoleWidth = csbi.dwSize.X;
+                            std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: " << recognized_text << std::flush;
                         }
                     }
 
@@ -198,8 +205,29 @@ void processAudioStream()
 
         if (audioQueue.pop(currentAudio))
         {
-            std::lock_guard<std::mutex> lock(bufferMutex);
-            audio_chunk.insert(audio_chunk.end(), currentAudio.begin(), currentAudio.end());
+            // 计算音频能量，用于噪音检测
+            float energy = 0.0f;
+            for (const auto& sample : currentAudio) {
+                energy += sample * sample;
+            }
+            energy /= currentAudio.size();
+            
+            // 使用自适应噪音阈值
+            static float noiseThreshold = 0.000001f; // 初始噪音阈值
+            static float avgEnergy = energy;      // 初始平均能量
+            static const float adaptRate = 0.000001f; // 自适应调整率
+            
+            // 更新平均能量（使用指数移动平均）
+            avgEnergy = avgEnergy * (1 - adaptRate) + energy * adaptRate;
+            
+            // 动态调整噪音阈值（设为平均能量的一定比例）
+            noiseThreshold = avgEnergy * 0.000001f;
+            
+            // 只有当能量超过噪音阈值时才处理音频
+            if (energy > noiseThreshold) {
+                std::lock_guard<std::mutex> lock(bufferMutex);
+                audio_chunk.insert(audio_chunk.end(), currentAudio.begin(), currentAudio.end());
+            }
 
             // size_t keep_size = SAMPLE_RATE * 10; // 保留5秒的数据
             // if (audio_chunk.size() > keep_size)
@@ -207,10 +235,10 @@ void processAudioStream()
             //     audio_chunk.erase(audio_chunk.begin(), audio_chunk.end() - keep_size);
             // }
         }
-        else
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        // else
+        // {
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // }
     }
 }
 
