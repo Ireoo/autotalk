@@ -2,16 +2,70 @@
 #include <iostream>
 #include <set>
 
+bool AudioCapture::comInitialized_ = false;
+
 AudioCapture::AudioCapture() 
     : stream_(nullptr)
     , initialized_(false)
     , currentDeviceIndex_(-1)
     , audioBuffer_(512)  // 预分配缓冲区
+    , useLoopback_(false)
+#ifdef _WIN32
+    , pEnumerator_(nullptr)
+    , pDevice_(nullptr)
+    , pAudioClient_(nullptr)
+    , pCaptureClient_(nullptr)
+    , pFormat_(nullptr)
+    , hEvent_(nullptr)
+    , isCapturing_(false)
+#endif
 {
+#ifdef _WIN32
+    if (!comInitialized_) {
+        HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+        if (SUCCEEDED(hr)) {
+            comInitialized_ = true;
+        } else if (hr == RPC_E_CHANGED_MODE) {
+            // 如果已经在其他线程以不同的模式初始化，尝试多线程模式
+            hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+            if (SUCCEEDED(hr)) {
+                comInitialized_ = true;
+            }
+        }
+        
+        if (!comInitialized_) {
+            std::cerr << "COM 初始化失败，错误代码: 0x" << std::hex << hr << std::endl;
+        }
+    }
+#endif
 }
 
 AudioCapture::~AudioCapture() {
     stop();
+#ifdef _WIN32
+    if (pFormat_) {
+        CoTaskMemFree(pFormat_);
+    }
+    if (pEnumerator_) {
+        pEnumerator_->Release();
+    }
+    if (pDevice_) {
+        pDevice_->Release();
+    }
+    if (pAudioClient_) {
+        pAudioClient_->Release();
+    }
+    if (pCaptureClient_) {
+        pCaptureClient_->Release();
+    }
+    if (hEvent_) {
+        CloseHandle(hEvent_);
+    }
+    if (comInitialized_) {
+        CoUninitialize();
+        comInitialized_ = false;
+    }
+#endif
 }
 
 bool AudioCapture::initialize() {
@@ -24,6 +78,25 @@ bool AudioCapture::initialize() {
         std::cerr << "PortAudio 初始化失败: " << Pa_GetErrorText(err) << std::endl;
         return false;
     }
+
+#ifdef _WIN32
+    if (!comInitialized_) {
+        std::cerr << "COM 未初始化" << std::endl;
+        return false;
+    }
+
+    HRESULT hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator),
+        NULL,
+        CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator),
+        (void**)&pEnumerator_);
+    if (FAILED(hr)) {
+        std::cerr << "创建设备枚举器失败" << std::endl;
+        return false;
+    }
+#endif
+
     initialized_ = true;
     return true;
 }
@@ -183,4 +256,8 @@ int AudioCapture::paCallback(
     }
 
     return paContinue;
+}
+
+void AudioCapture::setLoopbackCapture(bool enable) {
+    useLoopback_ = enable;
 } 

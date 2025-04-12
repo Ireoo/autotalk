@@ -253,6 +253,7 @@ int main(int argc, char **argv)
     std::string modelPath = "models/ggml-medium-zh.bin";
     bool listDevices = false;
 
+
     for (int i = 1; i < argc; i++)
     {
         std::string arg = argv[i];
@@ -282,6 +283,9 @@ int main(int argc, char **argv)
         std::cerr << "无法初始化音频捕获" << std::endl;
         return 1;
     }
+
+    // 启用环回捕获
+    audioCapture.setLoopbackCapture(true);
 
     // 获取并显示可用的输入设备
     auto devices = audioCapture.getInputDevices();
