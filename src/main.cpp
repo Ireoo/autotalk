@@ -95,6 +95,20 @@ std::string convertToLocalEncoding(const char *utf8Text)
 #endif
 }
 
+void ClearConsoleBlock(HANDLE hConsole, int startRow, int lineCount, int width)
+{
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hConsole, &csbi);
+    DWORD written;
+    for (int i = 0; i < lineCount; ++i)
+    {
+        COORD coord = {0, startRow + i};
+        FillConsoleOutputCharacter(hConsole, ' ', width, coord, &written);
+        // 可选：填充当前行的属性（颜色等）
+        FillConsoleOutputAttribute(hConsole, csbi.wAttributes, width, coord, &written);
+    }
+}
+
 // 语音识别处理线程函数
 void processSpeechRecognition()
 {
@@ -153,29 +167,50 @@ void processSpeechRecognition()
 
                     if (std::regex_search(recognized_text, std::regex("^(謝謝大家|謝謝觀看|謝謝觀看|謝謝收看|\\()")))
                     {
-                        std::lock_guard<std::mutex> lock(bufferMutex);
-                        audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
+                        // std::lock_guard<std::mutex> lock(bufferMutex);
+                        // audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
                         if (running)
                         {
-                            CONSOLE_SCREEN_BUFFER_INFO csbi;
-                            GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-                            int consoleWidth = csbi.dwSize.X;
-                            std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: 识别中..." << std::flush;
+                            // CONSOLE_SCREEN_BUFFER_INFO csbi;
+                            // GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+                            // int consoleWidth = csbi.dwSize.X;
+                            // std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: 识别中..." << std::flush;
                         }
                     }
                     else
                     {
                         if (running)
                         {
-                            // 获取控制台宽度，用于清除当前行
+                            // 获取控制台句柄及宽度
+                            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
                             CONSOLE_SCREEN_BUFFER_INFO csbi;
-                            GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+                            GetConsoleScreenBufferInfo(hConsole, &csbi);
                             int consoleWidth = csbi.dwSize.X;
-                            std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: " << recognized_text << std::flush;
+
+                            // 将 recognized_text 分割为多行
+                            std::istringstream iss("[" + timestamp + "]: " + recognized_text);
+                            std::vector<std::string> lines;
+                            std::string line;
+                            while (std::getline(iss, line))
+                            {
+                                lines.push_back(line);
+                            }
+
+                            // 假设 recognized_text 原来打印的位置从当前行开始，
+                            // 保存当前光标行号作为开始行（这里简单示例，实际需要精确控制光标）
+                            int startRow = csbi.dwCursorPosition.Y;
+
+                            // 清除 recognized_text 占据的所有行
+                            ClearConsoleBlock(hConsole, startRow, lines.size(), consoleWidth);
+
+                            // 移动光标到开始行，并重新打印新的 recognized_text
+                            COORD newPos = {0, (SHORT)startRow};
+                            SetConsoleCursorPosition(hConsole, newPos);
+                            std::cout << "[" << timestamp << "]: " << recognized_text << std::flush;
                         }
                     }
 
-                    if (std::regex_search(recognized_text, std::regex("[\\.!?。！？]$")))
+                    if (std::regex_search(recognized_text, std::regex("[\\.!?。！？~]$")))
                     {
                         std::lock_guard<std::mutex> lock(bufferMutex);
                         audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
@@ -192,7 +227,15 @@ void processSpeechRecognition()
                 std::cerr << "语音识别处理发生未知错误" << std::endl;
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        size_t keep_size = SAMPLE_RATE * 20;
+        if (audio_chunk.size() > keep_size)
+        {
+            std::lock_guard<std::mutex> lock(bufferMutex);
+            audio_chunk.erase(audio_chunk.begin(), audio_chunk.end() - keep_size);
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
 
@@ -205,40 +248,9 @@ void processAudioStream()
 
         if (audioQueue.pop(currentAudio))
         {
-            // 计算音频能量，用于噪音检测
-            float energy = 0.0f;
-            for (const auto& sample : currentAudio) {
-                energy += sample * sample;
-            }
-            energy /= currentAudio.size();
-            
-            // 使用自适应噪音阈值
-            static float noiseThreshold = 0.000001f; // 初始噪音阈值
-            static float avgEnergy = energy;      // 初始平均能量
-            static const float adaptRate = 0.000001f; // 自适应调整率
-            
-            // 更新平均能量（使用指数移动平均）
-            avgEnergy = avgEnergy * (1 - adaptRate) + energy * adaptRate;
-            
-            // 动态调整噪音阈值（设为平均能量的一定比例）
-            noiseThreshold = avgEnergy * 0.000001f;
-            
-            // 只有当能量超过噪音阈值时才处理音频
-            if (energy > noiseThreshold) {
-                std::lock_guard<std::mutex> lock(bufferMutex);
-                audio_chunk.insert(audio_chunk.end(), currentAudio.begin(), currentAudio.end());
-            }
-
-            // size_t keep_size = SAMPLE_RATE * 10; // 保留5秒的数据
-            // if (audio_chunk.size() > keep_size)
-            // {
-            //     audio_chunk.erase(audio_chunk.begin(), audio_chunk.end() - keep_size);
-            // }
+            std::lock_guard<std::mutex> lock(bufferMutex);
+            audio_chunk.insert(audio_chunk.end(), currentAudio.begin(), currentAudio.end());
         }
-        // else
-        // {
-        //     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        // }
     }
 }
 
@@ -252,7 +264,6 @@ int main(int argc, char **argv)
     int selectedMic = 0; // 初始值设为-1，表示未指定
     std::string modelPath = "models/ggml-medium-zh.bin";
     bool listDevices = false;
-
 
     for (int i = 1; i < argc; i++)
     {
@@ -371,6 +382,6 @@ int main(int argc, char **argv)
     whisper_free(ctx);
     delete systemMonitor;
 
-    std::cout << "\n程序已停止" << std::endl;
+    std::cout << "程序已停止" << std::endl;
     return 0;
 }
