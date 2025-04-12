@@ -29,6 +29,12 @@ public:
     // 设置是否使用环回捕获
     void setLoopbackCapture(bool enable);
 
+    // 设置音频增益
+    void setGain(float gain);
+
+    // 获取当前增益值
+    float getGain() const;
+
 private:
     static int paCallback(const void* inputBuffer, void* outputBuffer,
                          unsigned long framesPerBuffer,
@@ -43,6 +49,7 @@ private:
     int currentDeviceIndex_;
     std::vector<float> audioBuffer_;  // 预分配的音频缓冲区
     bool useLoopback_;  // 是否使用环回捕获
+    float gain_;  // 音频增益
 
 #ifdef _WIN32
     // WASAPI相关变量

@@ -10,6 +10,7 @@ AudioCapture::AudioCapture()
     , currentDeviceIndex_(-1)
     , audioBuffer_(512)  // 预分配缓冲区
     , useLoopback_(false)
+    , gain_(2.0f)  // 默认增益为2.0
 #ifdef _WIN32
     , pEnumerator_(nullptr)
     , pDevice_(nullptr)
@@ -248,8 +249,11 @@ int AudioCapture::paCallback(
             self->audioBuffer_.resize(framesPerBuffer);
         }
         
-        // 复制数据到预分配的缓冲区
-        std::copy(in, in + framesPerBuffer, self->audioBuffer_.begin());
+        // 应用增益控制 (2.0倍增益)
+        const float gain = 2.0f;
+        for (unsigned long i = 0; i < framesPerBuffer; ++i) {
+            self->audioBuffer_[i] = in[i] * gain;
+        }
         
         // 调用回调函数，传递包含实际数据大小的视图
         self->callback_(std::vector<float>(self->audioBuffer_.begin(), self->audioBuffer_.begin() + framesPerBuffer));
@@ -260,4 +264,4 @@ int AudioCapture::paCallback(
 
 void AudioCapture::setLoopbackCapture(bool enable) {
     useLoopback_ = enable;
-} 
+}

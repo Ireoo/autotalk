@@ -53,6 +53,10 @@ boost::lockfree::spsc_queue<std::vector<float>, boost::lockfree::capacity<AUDIO_
 std::vector<float> audio_chunk;
 std::string confirmInfo;
 const int MAX_AUDIO_LENGTH = 10 * SAMPLE_RATE; // 最大音频长度（10秒）
+// 识别语音相同内容次数
+const int MAX_REPEAT_COUNT = 5;
+int REPEAT_COUNT = 0;
+std::string REPEAT_TEXT;
 
 // Signal handler for Ctrl+C
 void signalHandler(int signal)
@@ -119,24 +123,40 @@ void processSpeechRecognition()
             try
             {
                 whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+                // 输出控制：关闭实时及进度打印，开启时间戳显示
                 wparams.print_realtime = false;
                 wparams.print_progress = false;
-                wparams.print_timestamps = true;
-                wparams.translate = false;
-                wparams.language = "zh";
+                wparams.print_timestamps = false;
+
+                // 语言与翻译设置
+                wparams.language = "zh";   // 强制使用中文识别
+                wparams.translate = false; // 不进行翻译，只转录原语言
+
+                // 线程设置：采用硬件并发数，加速计算
                 wparams.n_threads = std::thread::hardware_concurrency();
-                wparams.offset_ms = 0;
-                wparams.duration_ms = 0;
-                wparams.audio_ctx = 768;
-                wparams.max_len = 0;
-                wparams.token_timestamps = true;
-                wparams.thold_pt = 0.01f;
-                wparams.max_tokens = 32;
-                wparams.temperature = 0.0f;
-                wparams.temperature_inc = 0.0f;
-                wparams.entropy_thold = 2.4f;
-                wparams.logprob_thold = -1.0f;
-                wparams.no_speech_thold = 0.6f;
+
+                // 音频截取设置
+                wparams.offset_ms = 0;   // 从音频起始开始处理
+                wparams.duration_ms = 0; // 0 表示处理整个输入音频
+                wparams.audio_ctx = 768; // 保留的音频上下文长度，根据实际使用情况微调
+
+                // 输出与 token 限制
+                wparams.max_len = 0;     // 0 表示不限制输出长度（或采用模型默认值）
+                wparams.max_tokens = 64; // 可根据语音内容复杂度适当增加
+
+                // Token 时间戳记录
+                wparams.token_timestamps = false;
+
+                // 解码温度及相关阈值设置
+                wparams.thold_pt = 0.01f;       // token概率的阈值，可确保低概率输出被抑制
+                wparams.temperature = 0.0f;     // 温度设置为0，保证贪心解码的确定性
+                wparams.temperature_inc = 0.0f; // 不进行温度增量调整
+                wparams.entropy_thold = 2.6f;   // 熵阈值，过高可能导致更多噪声输出，过低可能过于保守
+                wparams.logprob_thold = -1.0f;  // 对数概率阈值，控制 token 输出的可靠性
+                wparams.no_speech_thold = 0.6f; // 无语音判定阈值，用于过滤纯背景噪声
+
+                // 上下文保持：适用于连续语音识别场景
+                wparams.no_context = true;
 
                 // 获取当前时间戳
                 auto now = std::chrono::system_clock::now();
@@ -152,6 +172,8 @@ void processSpeechRecognition()
                 //     audio_copy = audio_chunk;
                 // }
 
+                std::vector<float>::const_iterator audio_end = audio_chunk.end();
+
                 if (whisper_full(ctx, wparams, audio_chunk.data(), audio_chunk.size()) == 0)
                 {
                     const int n_segments = whisper_full_n_segments(ctx);
@@ -165,55 +187,73 @@ void processSpeechRecognition()
                         }
                     }
 
-                    if (std::regex_search(recognized_text, std::regex("^(謝謝大家|謝謝觀看|謝謝觀看|謝謝收看|\\()")))
+                    // if (std::regex_search(recognized_text, std::regex("^(謝謝大家|謝謝觀看|謝謝觀看|謝謝收看|\\()")))
+                    // {
+                    //     // std::lock_guard<std::mutex> lock(bufferMutex);
+                    //     // audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
+                    //     if (running)
+                    //     {
+                    //         // CONSOLE_SCREEN_BUFFER_INFO csbi;
+                    //         // GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+                    //         // int consoleWidth = csbi.dwSize.X;
+                    //         // std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: 识别中..." << std::flush;
+                    //     }
+                    // }
+                    // else
+                    // {
+                    if (running)
                     {
-                        // std::lock_guard<std::mutex> lock(bufferMutex);
-                        // audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
-                        if (running)
+                        // 获取控制台句柄及宽度
+                        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+                        CONSOLE_SCREEN_BUFFER_INFO csbi;
+                        GetConsoleScreenBufferInfo(hConsole, &csbi);
+                        int consoleWidth = csbi.dwSize.X;
+
+                        // 将 recognized_text 分割为多行
+                        std::istringstream iss("[" + timestamp + "]: " + recognized_text);
+                        std::vector<std::string> lines;
+                        std::string line;
+                        while (std::getline(iss, line))
                         {
-                            // CONSOLE_SCREEN_BUFFER_INFO csbi;
-                            // GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-                            // int consoleWidth = csbi.dwSize.X;
-                            // std::cout << "\r" << std::string(consoleWidth, ' ') << "\r[" << timestamp << "]: 识别中..." << std::flush;
+                            lines.push_back(line);
                         }
+
+                        // 假设 recognized_text 原来打印的位置从当前行开始，
+                        // 保存当前光标行号作为开始行（这里简单示例，实际需要精确控制光标）
+                        int startRow = csbi.dwCursorPosition.Y;
+
+                        // 清除 recognized_text 占据的所有行
+                        ClearConsoleBlock(hConsole, startRow, lines.size(), consoleWidth);
+
+                        // 移动光标到开始行，并重新打印新的 recognized_text
+                        COORD newPos = {0, (SHORT)startRow};
+                        SetConsoleCursorPosition(hConsole, newPos);
+                        std::cout << "[" << timestamp << "]: " << recognized_text << std::flush;
+                    }
+                    // }
+
+                    if (REPEAT_TEXT == recognized_text)
+                    {
+                        REPEAT_COUNT++;
                     }
                     else
                     {
-                        if (running)
-                        {
-                            // 获取控制台句柄及宽度
-                            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-                            CONSOLE_SCREEN_BUFFER_INFO csbi;
-                            GetConsoleScreenBufferInfo(hConsole, &csbi);
-                            int consoleWidth = csbi.dwSize.X;
-
-                            // 将 recognized_text 分割为多行
-                            std::istringstream iss("[" + timestamp + "]: " + recognized_text);
-                            std::vector<std::string> lines;
-                            std::string line;
-                            while (std::getline(iss, line))
-                            {
-                                lines.push_back(line);
-                            }
-
-                            // 假设 recognized_text 原来打印的位置从当前行开始，
-                            // 保存当前光标行号作为开始行（这里简单示例，实际需要精确控制光标）
-                            int startRow = csbi.dwCursorPosition.Y;
-
-                            // 清除 recognized_text 占据的所有行
-                            ClearConsoleBlock(hConsole, startRow, lines.size(), consoleWidth);
-
-                            // 移动光标到开始行，并重新打印新的 recognized_text
-                            COORD newPos = {0, (SHORT)startRow};
-                            SetConsoleCursorPosition(hConsole, newPos);
-                            std::cout << "[" << timestamp << "]: " << recognized_text << std::flush;
-                        }
+                        REPEAT_COUNT = 0;
                     }
+                    REPEAT_TEXT = recognized_text;
 
-                    if (std::regex_search(recognized_text, std::regex("[\\.!?。！？~]$")))
+                    if (REPEAT_COUNT >= MAX_REPEAT_COUNT)
+                    {
+                        REPEAT_COUNT = 0;
+                        REPEAT_TEXT = "";
+                        std::lock_guard<std::mutex> lock(bufferMutex);
+                        audio_chunk.erase(audio_chunk.begin(), audio_end);
+                        std::cout << std::endl;
+                    }
+                    else if (std::regex_search(recognized_text, std::regex("[\\.!?。！？~]$")))
                     {
                         std::lock_guard<std::mutex> lock(bufferMutex);
-                        audio_chunk.erase(audio_chunk.begin(), audio_chunk.end());
+                        audio_chunk.erase(audio_chunk.begin(), audio_end);
                         std::cout << std::endl;
                     }
                 }
@@ -235,7 +275,7 @@ void processSpeechRecognition()
             audio_chunk.erase(audio_chunk.begin(), audio_chunk.end() - keep_size);
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 

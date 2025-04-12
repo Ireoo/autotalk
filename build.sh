@@ -188,4 +188,4 @@ echo "构建完成！"
 echo "==== 构建完成 ===="
 echo "可执行文件位于 Release 目录中"# 运行程序
 
-./Release/autotalk.exe --list
+./Release/autotalk.exe --mic 2 --model models/ggml-tiny.bin
