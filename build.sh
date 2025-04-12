@@ -61,9 +61,10 @@ cd ..
 echo "正在构建 libsndfile..."
 cd third_party/libsndfile
 if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
-    # ./autogen.sh
-    ./configure
-    make
+    mkdir -p build
+    cd build
+    cmake ..
+    cmake --build . --config Release
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     mkdir -p build
     cd build
