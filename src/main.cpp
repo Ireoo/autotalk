@@ -198,30 +198,31 @@ int main(int argc, char** argv) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
+    // 解析命令行参数
+    int selectedMic = 0;  // 初始值设为-1，表示未指定
+    std::string modelPath = "models/ggml-medium-zh.bin";
+    bool listDevices = false;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--mic" && i + 1 < argc) {
+            selectedMic = std::stoi(argv[++i]);
+        } else if (arg == "--model" && i + 1 < argc) {
+            modelPath = argv[++i];
+        } else if (arg == "--list") {
+            listDevices = true;
+        }
+    }
+
     // 设置中文控制台输出
     #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     #endif
 
-    std::cout << "正在初始化语音识别系统..." << std::endl;
-
-    // 初始化 whisper 模型
-    ctx = whisper_init_from_file("models/ggml-medium-zh.bin");
-    if (!ctx) {
-        std::cerr << "无法加载模型，请确保 models/ggml-medium-zh.bin 文件存在" << std::endl;
-        return 1;
-    }
-
-    // 初始化系统监控
-    systemMonitor = new SystemMonitor();
-    systemMonitor->start();
-
     // 初始化音频捕获
     AudioCapture audioCapture;
     if (!audioCapture.initialize()) {
         std::cerr << "无法初始化音频捕获" << std::endl;
-        whisper_free(ctx);
-        delete systemMonitor;
         return 1;
     }
 
@@ -232,12 +233,38 @@ int main(int argc, char** argv) {
         std::cout << device.first << ": " << device.second << std::endl;
     }
 
-    // 选择默认设备或让用户选择
-    std::cout << "\n请选择输入设备编号（输入对应数字）：";
-    int deviceIndex;
-    std::cin >> deviceIndex;
+    // 如果指定了 --list 参数，显示设备列表后退出
+    if (listDevices) {
+        return 0;
+    }
 
-    if (!audioCapture.setInputDevice(deviceIndex)) {
+    // 如果没有指定麦克风，使用列表中的第一个设备
+    if (selectedMic == -1) {
+        if (!devices.empty()) {
+            selectedMic = devices[0].first;
+            std::cout << "\n使用默认输入设备：" << selectedMic << " (" << devices[0].second << ")" << std::endl;
+        } else {
+            std::cerr << "未找到可用的输入设备" << std::endl;
+            return 1;
+        }
+    } else {
+        std::cout << "\n使用指定的输入设备：" << selectedMic << std::endl;
+    }
+
+    std::cout << "正在初始化语音识别系统..." << std::endl;
+
+    // 初始化 whisper 模型
+    ctx = whisper_init_from_file(modelPath.c_str());
+    if (!ctx) {
+        std::cerr << "无法加载模型，请确保模型文件 " << modelPath << " 存在" << std::endl;
+        return 1;
+    }
+
+    // 初始化系统监控
+    systemMonitor = new SystemMonitor();
+    systemMonitor->start();
+
+    if (!audioCapture.setInputDevice(selectedMic)) {
         std::cerr << "无法设置输入设备" << std::endl;
         whisper_free(ctx);
         delete systemMonitor;
