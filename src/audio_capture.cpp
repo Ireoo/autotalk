@@ -44,8 +44,8 @@ std::vector<std::pair<int, std::string>> AudioCapture::getInputDevices() const {
     // 用于存储已处理的设备名称
     std::vector<std::string> processedNames;
 
-    // devices.push_back({0, "默认设备"});
-    // processedNames.push_back("默认设备");
+    devices.push_back({0, "默认设备"});
+    processedNames.push_back("默认设备");
     
     for (int i = 0; i < numDevices; i++) {
         const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(i);

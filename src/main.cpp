@@ -35,7 +35,7 @@
 constexpr int SAMPLE_RATE = 16000;
 constexpr int FRAME_SIZE = 512;
 constexpr int MAX_BUFFER_SIZE = SAMPLE_RATE * 30; // 30 seconds of audio
-constexpr int AUDIO_CONTEXT_SIZE = SAMPLE_RATE * 3; // 3 seconds context
+constexpr int AUDIO_CONTEXT_SIZE = SAMPLE_RATE * 1; // 3 seconds context
 constexpr int MIN_AUDIO_SAMPLES = SAMPLE_RATE; // 至少1秒的音频数据
 
 // Global variables
@@ -159,27 +159,9 @@ void processAudioStream() {
                     // 输出识别结果
                     std::cout << "[" << timestamp << "]: " << recognized_text << std::endl;
 
-                    // 检查是否需要确认
-                    if (!confirmInfo.empty()) {
-                        std::cout << "Verify content: " << confirmInfo << std::endl;
-                        if (std::regex_search(recognized_text, std::regex("(yes|ok|sure|是|好)", std::regex::icase))) {
-                            confirmInfo.clear();
-                            audio_chunk.clear();
-                            std::cout << "Confirmed. Master, What can I do for you?" << std::endl;
-                        } else if (std::regex_search(recognized_text, std::regex("(no|cancel|不要|取消)", std::regex::icase))) {
-                            confirmInfo.clear();
-                            audio_chunk.clear();
-                            std::cout << "Canceled. Master, What can I do for you?" << std::endl;
-                        }
-                    } else {
-                        // 检查是否以句号结尾
-                        if (std::regex_search(recognized_text, std::regex("[^.!?]{1,}[.!?]$|^$"))) {
-                            audio_chunk.clear();
-                            if (!recognized_text.empty() && recognized_text != "Thank you." && recognized_text != "you") {
-                                std::cout << "[>>>>]: '" << recognized_text << "'" << std::endl;
-                                // TODO: 在这里添加 ChatGPT 处理逻辑
-                            }
-                        }
+                    if (std::regex_search(recognized_text, std::regex("[\\.!?。！？]$"))) {
+                        audio_chunk.clear();
+                        std::cout << "[" << timestamp << "]: 清空音频数据." << std::endl;
                     }
                 }
 
