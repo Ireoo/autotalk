@@ -21,6 +21,29 @@ if [ ! -d "third_party/libsndfile" ]; then
     git clone https://github.com/libsndfile/libsndfile.git third_party/libsndfile
 fi
 
+# 下载并安装CUDA 11.8
+if [ ! -d "third_party/cuda" ]; then
+    echo "正在下载并安装CUDA 11.8..."
+    mkdir -p third_party/cuda
+    
+    if [[ "$OSTYPE" == "linux-gnu" ]]; then
+        # Linux安装
+        wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run -P third_party/cuda/
+        chmod +x third_party/cuda/cuda_11.8.0_520.61.05_linux.run
+        sudo sh third_party/cuda/cuda_11.8.0_520.61.05_linux.run --toolkit --silent
+        export CUDA_PATH=/usr/local/cuda-11.8
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        # Windows安装
+        mkdir -p third_party/cuda_installer
+        wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_522.06_windows.exe -P third_party/cuda_installer/
+        # 静默安装CUDA工具包
+        third_party/cuda_installer/cuda_11.8.0_522.06_windows.exe -s
+        export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+    elif [[ "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
+        echo "CUDA不支持macOS，跳过CUDA安装"
+    fi
+fi
+
 echo "系统类型: $OSTYPE"
 
 # 构建 PortAudio
@@ -80,21 +103,34 @@ cd build
 # 配置CMake
 echo "正在配置CMake..."
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    # Windows 平台配置 - 禁用CUDA
+    # Windows 平台配置 - 启用CUDA
     cmake -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=ON \
           -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
           -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
-          -DGGML_CUDA=OFF \
+          -DGGML_CUDA=ON \
+          -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
           ..
 else
-    # Linux/macOS 配置 - 禁用CUDA
-    cmake -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=ON \
-          -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
-          -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
-          -DGGML_CUDA=OFF \
-          ..
+    # Linux/macOS 配置
+    if [[ "$OSTYPE" == "linux-gnu" ]]; then
+        # Linux启用CUDA
+        cmake -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_SHARED_LIBS=ON \
+              -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
+              -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
+              -DGGML_CUDA=ON \
+              -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
+              ..
+    else
+        # macOS禁用CUDA
+        cmake -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_SHARED_LIBS=ON \
+              -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
+              -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
+              -DGGML_CUDA=OFF \
+              ..
+    fi
 fi
 
 # 构建项目
@@ -141,13 +177,14 @@ else
     exit 1
 fi
 
-# 不再需要复制CUDA DLL文件，因为已禁用CUDA
-# if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-#     cp -f "$CUDA_PATH/bin/cudart64_12.dll" Release/
-#     cp -f "$CUDA_PATH/bin/cublas64_12.dll" Release/
-#     cp -f "$CUDA_PATH/bin/cublasLt64_12.dll" Release/
-#     cp -f "$CUDA_PATH/bin/cudnn64_8.dll" Release/
-# fi
+# 需要重新启用CUDA DLL文件的复制
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    echo "正在复制CUDA依赖库..."
+    cp -f "$CUDA_PATH/bin/cudart64_11.dll" Release/
+    cp -f "$CUDA_PATH/bin/cublas64_11.dll" Release/
+    cp -f "$CUDA_PATH/bin/cublasLt64_11.dll" Release/
+    cp -f "$CUDA_PATH/bin/cudnn64_8.dll" Release/
+fi
 
 echo "构建完成！"
 
