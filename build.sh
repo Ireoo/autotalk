@@ -115,7 +115,7 @@ if ! check_cuda_installed; then
     
     if [[ "$OSTYPE" == "linux-gnu" ]]; then
         # Linux安装
-        local cuda_installer="third_party/cuda/cuda_11.8.0_520.61.05_linux.run"
+        cuda_installer="third_party/cuda/cuda_11.8.0_520.61.05_linux.run"
         download_file "https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run" "$cuda_installer"
         
         if [ -f "$cuda_installer" ]; then
@@ -129,7 +129,7 @@ if ! check_cuda_installed; then
     elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
         # Windows安装
         mkdir -p third_party/cuda_installer
-        local cuda_installer="third_party/cuda_installer/cuda_11.8.0_522.06_windows.exe"
+        cuda_installer="third_party/cuda_installer/cuda_11.8.0_522.06_windows.exe"
         download_file "https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_522.06_windows.exe" "$cuda_installer"
         
         if [ -f "$cuda_installer" ]; then
