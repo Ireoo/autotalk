@@ -1,6 +1,27 @@
 cmake_minimum_required(VERSION 3.10)
 project(AutoTalk)
 
+# 启用CUDA支持
+enable_language(CUDA)
+find_package(CUDAToolkit REQUIRED)
+
+# 设置CUDA编译选项
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89)
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use-local-env")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler \"/EHsc\"")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -D_FORCE_INLINES")
+
+# 设置CUDA特性
+set(GGML_CUDA ON CACHE BOOL "Enable CUDA support")
+set(GGML_CUDA_F16 ON CACHE BOOL "Enable CUDA FP16 support")
+set(GGML_CUDA_FA ON CACHE BOOL "Enable CUDA fast attention")
+set(GGML_CUDA_GRAPHS ON CACHE BOOL "Enable CUDA graphs")
+set(GGML_CUDA_FORCE_MMQ ON CACHE BOOL "Force MMQ for CUDA")
+set(GGML_CUDA_FORCE_CUBLAS ON CACHE BOOL "Force cuBLAS for CUDA")
+
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,11 +29,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 设置vcpkg工具链
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 
-# 查找Boost库
-find_package(Boost REQUIRED COMPONENTS atomic thread system filesystem regex date_time chrono)
-
 # 查找PortAudio库
-find_package(PortAudio REQUIRED)
+# find_package(PortAudio REQUIRED)  # 注释掉这行
 
 # 设置构建共享库
 set(BUILD_SHARED_LIBS ON)
@@ -31,8 +49,8 @@ set(ENABLE_MPEG OFF CACHE BOOL "Enable MPEG support")
 add_subdirectory(third_party/libsndfile)
 
 # 设置PortAudio编译选项
-option(PA_BUILD_SHARED "Build PortAudio shared library" OFF)
-option(PA_BUILD_STATIC "Build PortAudio static library" ON)
+option(PA_BUILD_SHARED "Build PortAudio shared library" ON)  # 修改为ON
+option(PA_BUILD_STATIC "Build PortAudio static library" OFF)  # 修改为OFF
 option(PA_BUILD_EXAMPLES "Build PortAudio examples" OFF)
 option(PA_BUILD_TESTS "Build PortAudio tests" OFF)
 option(PA_DLL_LINK_WITH_STATIC_RUNTIME "Link PortAudio DLL with static runtime libraries" OFF)
@@ -74,13 +92,6 @@ target_link_libraries(autotalk PRIVATE
     portaudio
     whisper
     sndfile
-    Boost::atomic
-    Boost::thread
-    Boost::system
-    Boost::filesystem
-    Boost::regex
-    Boost::date_time
-    Boost::chrono
 )
 
 # Windows特定链接

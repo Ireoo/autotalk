@@ -16,7 +16,6 @@
 #include <iomanip>
 #include <regex>
 #include <sstream>
-#include <boost/lockfree/spsc_queue.hpp>
 #include "../third_party/libsndfile/include/sndfile.h"
 #ifdef _WIN32
 #include <Windows.h>
@@ -45,9 +44,10 @@ std::mutex bufferMutex;
 whisper_context *ctx = nullptr;
 SystemMonitor *systemMonitor = nullptr;
 
-// 使用无锁队列替代原有的互斥锁保护队列
+// 替换无锁队列为标准队列
+std::queue<std::vector<float>> audioQueue;
+std::mutex audioQueueMutex;
 const size_t AUDIO_QUEUE_SIZE = 1024; // 队列大小
-boost::lockfree::spsc_queue<std::vector<float>, boost::lockfree::capacity<AUDIO_QUEUE_SIZE>> audioQueue;
 
 // 音频处理相关的全局变量
 std::vector<float> audio_chunk;
@@ -71,11 +71,9 @@ void signalHandler(int signal)
 // Audio data processing callback
 void processAudio(const std::vector<float> &buffer)
 {
-    // 使用无锁队列的push方法
-    while (!audioQueue.push(buffer))
-    {
-        // 如果队列已满，等待一小段时间
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::lock_guard<std::mutex> lock(audioQueueMutex);
+    if (audioQueue.size() < AUDIO_QUEUE_SIZE) {
+        audioQueue.push(buffer);
     }
 }
 
@@ -286,11 +284,15 @@ void processAudioStream()
     {
         std::vector<float> currentAudio;
 
-        if (audioQueue.pop(currentAudio))
+        if (audioQueue.size() > 0)
         {
-            std::lock_guard<std::mutex> lock(bufferMutex);
-            audio_chunk.insert(audio_chunk.end(), currentAudio.begin(), currentAudio.end());
+            std::lock_guard<std::mutex> lock(audioQueueMutex);
+            currentAudio = audioQueue.front();
+            audioQueue.pop();
         }
+
+        std::lock_guard<std::mutex> lock(bufferMutex);
+        audio_chunk.insert(audio_chunk.end(), currentAudio.begin(), currentAudio.end());
     }
 }
 
