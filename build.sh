@@ -252,6 +252,8 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     if [ $GPU_ENABLED -eq 1 ]; then
         # 启用CUDA
         echo "Windows平台：启用CUDA GPU加速"
+        # 设置CUDA架构，支持从Pascal到Ada的所有架构
+        export CMAKE_CUDA_ARCHITECTURES="60;61;70;75;80;86;89;90"
         cmake -DCMAKE_BUILD_TYPE=Release \
               -DBUILD_SHARED_LIBS=ON \
               -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
@@ -264,6 +266,10 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
               -DGGML_CUDA_FORCE_CUBLAS=ON \
               -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
               -DCUDA_NVCC_EXECUTABLE="$CUDA_PATH/bin/nvcc.exe" \
+              -DCMAKE_CUDA_ARCHITECTURES="$CMAKE_CUDA_ARCHITECTURES" \
+              -DCUDA_TOOLKIT_INCLUDE="$CUDA_PATH/include" \
+              -DCUDA_TOOLKIT_LIBRARY_ROOT="$CUDA_PATH/lib/x64" \
+              -DCUDA_TOOLKIT_TARGET_DIR="$CUDA_PATH" \
               .. || {
                   echo "CUDA配置失败，回退到CPU模式"
                   cmake -DCMAKE_BUILD_TYPE=Release \
