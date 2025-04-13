@@ -43,6 +43,7 @@ std::deque<float> audioBuffer;
 std::mutex bufferMutex;
 whisper_context *ctx = nullptr;
 SystemMonitor *systemMonitor = nullptr;
+bool useGPU = false;  // 是否使用GPU加速
 
 // 替换无锁队列为标准队列
 std::queue<std::vector<float>> audioQueue;
@@ -111,6 +112,27 @@ void ClearConsoleBlock(HANDLE hConsole, int startRow, int lineCount, int width)
     }
 }
 
+// 打印GPU信息
+void printGPUInfo()
+{
+    whisper_backend_init();
+
+    int n_gpu = whisper_backend_params_get_n_gpu();
+    std::cout << "GPU设备数量: " << n_gpu << std::endl;
+
+    if (n_gpu > 0) {
+        for (int i = 0; i < n_gpu; ++i) {
+            std::string gpu_name = whisper_backend_params_get_gpu_name(i);
+            int64_t vram = whisper_backend_params_get_gpu_vram(i);
+            float vram_gb = vram / (1024.0f * 1024.0f * 1024.0f);
+            
+            std::cout << "GPU #" << i << ": " << gpu_name << " (VRAM: " << std::fixed << std::setprecision(2) << vram_gb << " GB)" << std::endl;
+        }
+    } else {
+        std::cout << "未检测到可用的GPU设备" << std::endl;
+    }
+}
+
 // 语音识别处理线程函数
 void processSpeechRecognition()
 {
@@ -155,6 +177,11 @@ void processSpeechRecognition()
 
                 // 上下文保持：适用于连续语音识别场景
                 wparams.no_context = true;
+
+                // 启用GPU加速
+                if (useGPU) {
+                    wparams.use_gpu = true;
+                }
 
                 // 获取当前时间戳
                 auto now = std::chrono::system_clock::now();
@@ -306,6 +333,8 @@ int main(int argc, char **argv)
     int selectedMic = 0; // 初始值设为-1，表示未指定
     std::string modelPath = "models/ggml-medium-zh.bin";
     bool listDevices = false;
+    bool listGPUs = false;    // 列出GPU设备
+    bool forceUseGPU = false; // 强制使用GPU
 
     for (int i = 1; i < argc; i++)
     {
@@ -322,12 +351,78 @@ int main(int argc, char **argv)
         {
             listDevices = true;
         }
+        else if (arg == "--list-gpus")
+        {
+            listGPUs = true;
+        }
+        else if (arg == "--gpu")
+        {
+            forceUseGPU = true;
+        }
+        else if (arg == "--cpu")
+        {
+            forceUseGPU = false;
+        }
     }
 
 // 设置中文控制台输出
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
 #endif
+
+    // 初始化whisper后端
+    whisper_backend_init();
+
+    // 如果指定了--list-gpus参数，显示可用的GPU设备
+    if (listGPUs)
+    {
+        printGPUInfo();
+        return 0;
+    }
+
+    // 检查GPU是否可用
+    int n_gpu = whisper_backend_params_get_n_gpu();
+    if (n_gpu > 0)
+    {
+        // 默认使用GPU，除非明确指定--cpu
+        useGPU = true;
+        
+        // 检查是否明确指定了--cpu选项
+        for (int i = 1; i < argc; i++)
+        {
+            std::string arg = argv[i];
+            if (arg == "--cpu")
+            {
+                useGPU = false;
+                std::cout << "已指定使用CPU模式，禁用GPU加速" << std::endl;
+                break;
+            }
+        }
+        
+        if (useGPU) {
+            std::string gpu_name = whisper_backend_params_get_gpu_name(0);
+            int64_t vram = whisper_backend_params_get_gpu_vram(0);
+            float vram_gb = vram / (1024.0f * 1024.0f * 1024.0f);
+            std::cout << "找到 " << n_gpu << " 个可用GPU设备，默认启用GPU加速" << std::endl;
+            std::cout << "使用GPU: " << gpu_name << " (VRAM: " << std::fixed << std::setprecision(2) << vram_gb << " GB)" << std::endl;
+        }
+    }
+    else
+    {
+        useGPU = false;
+        std::cout << "未检测到可用的GPU设备，自动切换到CPU模式" << std::endl;
+        
+        // 如果明确指定了--gpu选项但没有可用的GPU
+        for (int i = 1; i < argc; i++)
+        {
+            std::string arg = argv[i];
+            if (arg == "--gpu")
+            {
+                std::cerr << "警告：指定了使用GPU，但未检测到可用的GPU设备" << std::endl;
+                break;
+            }
+        }
+    }
 
     // 初始化音频捕获
     AudioCapture audioCapture;
@@ -374,9 +469,15 @@ int main(int argc, char **argv)
     }
 
     std::cout << "正在初始化语音识别系统..." << std::endl;
+    std::cout << "使用 " << (useGPU ? "GPU" : "CPU") << " 模式" << std::endl;
 
     // 初始化 whisper 模型
-    ctx = whisper_init_from_file(modelPath.c_str());
+    struct whisper_context_params cparams = whisper_context_default_params();
+    if (useGPU) {
+        cparams.use_gpu = true;
+    }
+    ctx = whisper_init_from_file_with_params(modelPath.c_str(), cparams);
+    
     if (!ctx)
     {
         std::cerr << "无法加载模型，请确保模型文件 " << modelPath << " 存在" << std::endl;
