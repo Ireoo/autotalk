@@ -21,26 +21,7 @@ if [ ! -d "third_party/libsndfile" ]; then
     git clone https://github.com/libsndfile/libsndfile.git third_party/libsndfile
 fi
 
-# 检查并下载Boost库
-if [ ! -d "third_party/boost" ]; then
-    echo "正在下载Boost库..."
-    mkdir -p third_party
-    git clone --recursive https://github.com/boostorg/boost.git third_party/boost
-fi
-
 echo "系统类型: $OSTYPE"
-
-# 构建Boost库
-cd third_party/boost
-echo "正在构建Boost库..."
-if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
-    ./bootstrap.sh --with-libraries=atomic,thread,system,filesystem,regex,date_time,chrono
-    ./b2 install --prefix=../install
-elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    cmd.exe //c "bootstrap.bat"
-    cmd.exe //c "b2.exe install --prefix=../install --with-atomic --with-thread --with-system --with-filesystem --with-regex --with-date_time --with-chrono toolset=msvc-14.3 architecture=x86 address-model=64 link=shared runtime-link=shared variant=release"
-fi
-cd ../..
 
 # 构建 PortAudio
 echo "正在构建 PortAudio..."
@@ -63,12 +44,12 @@ cd third_party/libsndfile
 if [[ "$OSTYPE" == "linux-gnu" || "$OSTYPE" == "darwin" || "$OSTYPE" == "darwin23" ]]; then
     mkdir -p build
     cd build
-    cmake ..
+    cmake -DBUILD_SHARED_LIBS=ON ..
     cmake --build . --config Release
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     mkdir -p build
     cd build
-    cmake -G "Visual Studio 17 2022" -A x64 ..
+    cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_SHARED_LIBS=ON ..
     cmake --build . --config Release
 fi
 
@@ -76,37 +57,48 @@ fi
 mkdir -p ../../../Release
 
 # 复制 DLL 文件
-if [ -f "Release/sndfile.dll" ]; then
-    cp Release/sndfile.dll ../../../Release/
-    echo "DLL 文件已复制到 Release 目录"
+if [ -f "build/src/Release/sndfile.dll" ]; then
+    cp "build/src/Release/sndfile.dll" "../../../Release/"
+    echo "已找到并复制 sndfile.dll"
+elif [ -f "./Release/sndfile.dll" ]; then
+    cp "./Release/sndfile.dll" "../../../Release/"
+    echo "已找到并复制 sndfile.dll"
 else
     echo "错误：找不到 sndfile.dll 文件"
+    echo "正在搜索 sndfile.dll..."
+    find . -name "sndfile.dll"
     exit 1
 fi
 
 cd ../../../
 
+# 清理旧的构建目录
+rm -rf build
+mkdir -p build
 cd build
 
-# 设置Boost路径
-BOOST_ROOT="$(pwd)/../third_party/boost"
-BOOST_INCLUDEDIR="$(pwd)/../third_party/boost/install/include"
-BOOST_LIBRARYDIR="$(pwd)/../third_party/boost/install/lib"
+# 配置CMake
+echo "正在配置CMake..."
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    # Windows 平台配置 - 禁用CUDA
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=ON \
+          -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
+          -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
+          -DGGML_CUDA=OFF \
+          ..
+else
+    # Linux/macOS 配置 - 禁用CUDA
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=ON \
+          -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
+          -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
+          -DGGML_CUDA=OFF \
+          ..
+fi
 
-echo "Boost路径信息："
-echo "BOOST_ROOT: ${BOOST_ROOT}"
-echo "BOOST_INCLUDEDIR: ${BOOST_INCLUDEDIR}"
-echo "BOOST_LIBRARYDIR: ${BOOST_LIBRARYDIR}"
-
-cmake -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=ON \
-      -DBOOST_ROOT="${BOOST_ROOT}" \
-      -DBOOST_INCLUDEDIR="${BOOST_INCLUDEDIR}" \
-      -DBOOST_LIBRARYDIR="${BOOST_LIBRARYDIR}" \
-      -DPortAudio_DIR="$(pwd)/../portaudio/install/lib/cmake/portaudio" \
-      -DCMAKE_PREFIX_PATH="$(pwd)/../portaudio/install" \
-      ..
-
+# 构建项目
+echo "正在构建项目..."
 cmake --build . --config Release
 
 cd ..
@@ -149,43 +141,18 @@ else
     exit 1
 fi
 
-# 复制Boost DLL文件
-cp -f third_party/install/lib/*.dll Release/
-
-# 复制模型文件
-cp -f models/*.bin Release/
-
-echo "正在构建 libsndfile..."
-
-# 进入 libsndfile 目录
-cd third_party/libsndfile || exit 1
-
-# 清理并创建构建目录
-rm -rf build
-mkdir build
-cd build || exit 1
-
-# 配置并构建
-cmake .. -G "Visual Studio 17 2022" -A x64 -DBUILD_SHARED_LIBS=ON
-cmake --build . --config Release
-
-# 创建 Release 目录（如果不存在）
-mkdir -p ../../../Release
-
-# 复制 DLL 文件
-if [ -f "Release/sndfile.dll" ]; then
-    cp Release/sndfile.dll ../../../Release/
-    echo "DLL 文件已复制到 Release 目录"
-else
-    echo "错误：找不到 sndfile.dll 文件"
-    exit 1
-fi
-
-cd ../../../
+# 不再需要复制CUDA DLL文件，因为已禁用CUDA
+# if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+#     cp -f "$CUDA_PATH/bin/cudart64_12.dll" Release/
+#     cp -f "$CUDA_PATH/bin/cublas64_12.dll" Release/
+#     cp -f "$CUDA_PATH/bin/cublasLt64_12.dll" Release/
+#     cp -f "$CUDA_PATH/bin/cudnn64_8.dll" Release/
+# fi
 
 echo "构建完成！"
 
 echo "==== 构建完成 ===="
-echo "可执行文件位于 Release 目录中"# 运行程序
+echo "可执行文件位于 Release 目录中"
 
-./Release/autotalk.exe --mic 2 --model models/ggml-tiny.bin
+# 运行程序
+./Release/autotalk.exe --list
