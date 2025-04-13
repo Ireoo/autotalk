@@ -133,9 +133,9 @@ if ! check_cuda_installed; then
         download_file "https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_522.06_windows.exe" "$cuda_installer"
         
         if [ -f "$cuda_installer" ]; then
-            # 静默安装CUDA工具包
-            echo "正在安装CUDA，这可能需要几分钟..."
-            ./third_party/cuda_installer/cuda_11.8.0_522.06_windows.exe -s
+            # 静默安装CUDA工具包，添加无界面安装参数
+            echo "正在以无界面模式安装CUDA，这可能需要几分钟..."
+            ./third_party/cuda_installer/cuda_11.8.0_522.06_windows.exe -s -noreboot -n
             export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
         else
             echo "错误: CUDA安装程序下载失败，将禁用GPU支持"
