@@ -72,11 +72,18 @@ check_cuda_installed() {
             return 1
         fi
     elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        if [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA" ]; then
+        # 检查多个可能的CUDA安装路径
+        if [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8" ]; then
             return 0
-        else
-            return 1
+        elif [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0" ]; then
+            return 0
+        elif [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA" ]; then
+            # 检查是否有任何CUDA版本
+            if ls -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v"* >/dev/null 2>&1; then
+                return 0
+            fi
         fi
+        return 1
     else
         return 1
     fi
@@ -87,10 +94,11 @@ set_cuda_path() {
     if [[ "$OSTYPE" == "linux-gnu" ]]; then
         export CUDA_PATH=/usr/local/cuda
     elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        if [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0" ]; then
-            export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0"
-        elif [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8" ]; then
+        # 优先使用CUDA 11.8
+        if [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8" ]; then
             export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+        elif [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0" ]; then
+            export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0"
         else
             # 查找最新版本的CUDA
             latest_cuda=$(ls -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v"* 2>/dev/null | sort -r | head -n 1)
@@ -105,6 +113,13 @@ set_cuda_path() {
     
     if [ -n "$CUDA_PATH" ]; then
         echo "找到CUDA路径: $CUDA_PATH"
+        # 检查CUDA编译器是否存在
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+            if [ ! -f "$CUDA_PATH/bin/nvcc.exe" ]; then
+                echo "警告: 在CUDA路径中未找到nvcc.exe，CUDA可能未正确安装"
+                export CUDA_PATH=""
+            fi
+        fi
     fi
 }
 
@@ -135,8 +150,19 @@ if ! check_cuda_installed; then
         if [ -f "$cuda_installer" ]; then
             # 静默安装CUDA工具包，添加无界面安装参数
             echo "正在以无界面模式安装CUDA，这可能需要几分钟..."
+            echo "注意: 请确保以管理员权限运行此脚本"
+            echo "如果安装失败，请手动下载并安装CUDA 11.8"
+            echo "下载地址: https://developer.nvidia.com/cuda-11-8-0-download-archive"
             ./third_party/cuda_installer/cuda_11.8.0_522.06_windows.exe -s -noreboot -n
-            export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+            # 等待安装完成
+            sleep 30
+            # 检查安装结果
+            if [ -d "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8" ]; then
+                export CUDA_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+            else
+                echo "警告: CUDA安装可能未完成，请检查安装日志"
+                echo "建议手动安装CUDA 11.8"
+            fi
         else
             echo "错误: CUDA安装程序下载失败，将禁用GPU支持"
         fi
@@ -237,6 +263,7 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
               -DGGML_CUDA_FORCE_MMQ=ON \
               -DGGML_CUDA_FORCE_CUBLAS=ON \
               -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
+              -DCUDA_NVCC_EXECUTABLE="$CUDA_PATH/bin/nvcc.exe" \
               .. || {
                   echo "CUDA配置失败，回退到CPU模式"
                   cmake -DCMAKE_BUILD_TYPE=Release \
